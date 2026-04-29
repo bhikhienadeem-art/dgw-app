@@ -8,7 +8,6 @@ import datetime
 # 1. Pagina Configuratie & Styling (Groen/Wit)
 st.set_page_config(page_title="Dienst Grondzaken Wanica", page_icon="📝", layout="wide")
 
-# Correctie: unsafe_allow_html=True (zoals te zien in image_8c0797.png)
 st.markdown("""
     <style>
     .main { background-color: #ffffff; }
@@ -18,7 +17,7 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# 2. Database Verbinding met Secrets
+# 2. Database Verbinding
 try:
     URL = st.secrets["SUPABASE_URL"]
     KEY = st.secrets["SUPABASE_KEY"]
@@ -27,7 +26,7 @@ except Exception as e:
     st.error("Configuratie fout. Controleer je Streamlit Secrets.")
     st.stop()
 
-# 3. E-mail Functie (Gmail)
+# 3. E-mail Functie
 def stuur_mail(data):
     try:
         GMAIL_USER = st.secrets["GMAIL_USER"]
@@ -40,7 +39,7 @@ def stuur_mail(data):
         msg['Subject'] = f"Nieuwe Registratie: {data['voornaam']} {data['achternaam']}"
         
         inhoud = f"""
-        Nieuwe aanvraag ontvangen via het DGW Portaal:
+        Nieuwe aanvraag via DGW Portaal:
 
         Naam: {data['voornaam']} {data['achternaam']}
         ID-Nummer: {data['id_nummer']}
@@ -49,10 +48,10 @@ def stuur_mail(data):
         Woonadres: {data['woonadres']}
         E-mail: {data['email']}
 
-        Bericht/Klacht:
+        Bericht:
         {data['bericht']}
 
-        Afspraak gepland op: {data['datum']} om {data['tijd']}
+        Afspraak: {data['afspraak_datum']} om {data['afspraak_tijd']}
         """
         msg.attach(MIMEText(inhoud, 'plain'))
         
@@ -93,36 +92,40 @@ if keuze == "Cliënt Registratie":
         with col_d:
             datum = st.date_input("Kies een datum", min_value=datetime.date.today())
         with col_t:
-            tijd = st.selectbox("Tijd", ["07:00", "07:30", "08:00", "08:30", "09:00"])
+            tijd = st.selectbox("Tijd", ["07:00", "07:15", "07:30", "07:45", "08:00"])
 
-        # Upload functie zoals in image_a7722d.png
         st.write("---")
-        upload = st.file_uploader("Upload relevante documenten (ID, perceelkaart, etc.)", type=['pdf', 'png', 'jpg'])
+        upload = st.file_uploader("Upload relevante documenten", type=['pdf', 'png', 'jpg'])
         
         submit = st.form_submit_button("Verzenden")
 
     if submit:
-        # Check op verplichte velden
         if vnaam and anaam and email and id_nr and bericht:
             # Controle op Maandag (0) of Woensdag (2)
             if datum.weekday() in [0, 2]:
+                # Kolomnamen aangepast om de fout uit image_8bf92a.png te voorkomen
                 form_data = {
-                    "voornaam": vnaam, "achternaam": anaam, "id_nummer": id_nr,
-                    "lad_nummer": lad_nr, "telefoon": tel, "woonadres": adres,
-                    "email": email, "bericht": bericht, "datum": str(datum), "tijd": tijd
+                    "voornaam": vnaam, 
+                    "achternaam": anaam, 
+                    "id_nummer": id_nr,
+                    "lad_nummer": lad_nr, 
+                    "telefoon": tel, 
+                    "woonadres": adres,
+                    "email": email, 
+                    "bericht": bericht, 
+                    "afspraak_datum": str(datum), 
+                    "afspraak_tijd": tijd
                 }
                 try:
-                    # Opslaan in Supabase
                     supabase.table("aanvragen").insert(form_data).execute()
-                    # Mail versturen
                     stuur_mail(form_data)
-                    st.success(f"✅ Bedankt {vnaam}! Uw aanvraag is opgeslagen en verzonden naar de medewerker.")
+                    st.success(f"✅ Bedankt {vnaam}! De gegevens zijn opgeslagen en de mail is verstuurd.")
                 except Exception as e:
                     st.error(f"Database fout: {e}")
             else:
                 st.error("⚠️ Afspraken kunnen alleen op Maandag of Woensdag worden gemaakt.")
         else:
-            st.warning("Vul a.u.b. alle velden met een * in.")
+            st.warning("Vul a.u.b. alle verplichte velden in.")
 
 elif keuze == "Medewerker Login":
     st.title("🔐 Medewerker Login")
