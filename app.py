@@ -146,7 +146,7 @@ if keuze == "Cliënt Registratie":
                 try:
                     supabase.table("aanvragen").insert(form_data).execute()
                     stuur_bevestigings_mail(form_data)
-                    st.success(f"✅ Bedankt {vnaam}! Uw aanvraag is opgeslagen en u ontvangt een bevestigingsmail.")
+                    st.success(f"✅ Bedankt {vnaam}! Uw aanvraag is opgeslagen.")
                 except Exception as e:
                     st.error(f"Fout bij opslaan: {e}")
             else:
@@ -162,7 +162,7 @@ elif keuze == "Medewerker Portaal":
             u = st.text_input("Gebruikersnaam")
             p = st.text_input("Wachtwoord", type="password")
             if st.form_submit_button("Inloggen"):
-                if u.strip() == "ICT Wanica" and p.strip() == "l3lyd@rp": #
+                if u.strip() == "ICT Wanica" and p.strip() == "l3lyd@rp":
                     st.session_state["logged_in"] = True
                     st.rerun()
                 else:
@@ -183,15 +183,24 @@ elif keuze == "Medewerker Portaal":
                     sel_id = st.selectbox("Selecteer dossier ID:", df['id'].tolist())
                     row = df[df['id'] == sel_id].iloc[0]
 
+                    # Mogelijke opties voor de dropdowns
+                    status_opties = ["In behandeling", "Bevestigd", "Geannuleerd"]
+                    tijd_opties = ["07:00", "07:30", "08:00", "08:30"]
+
                     col1, col2, col3 = st.columns(3)
                     with col1:
-                        n_status = st.selectbox("Nieuwe Status", ["In behandeling", "Bevestigd", "Geannuleerd"], 
-                                                index=["In behandeling", "Bevestigd", "Geannuleerd"].index(row['status']) if row['status'] in ["In behandeling", "Bevestigd", "Geannuleerd"] else 0)
+                        # Beveiliging voor status index
+                        current_status = row['status'] if row['status'] in status_opties else status_opties[0]
+                        n_status = st.selectbox("Nieuwe Status", status_opties, index=status_opties.index(current_status))
+                    
                     with col2:
                         n_datum = st.date_input("Nieuwe Datum", value=pd.to_datetime(row['afspraak_datum']))
+                    
                     with col3:
-                        n_tijd = st.selectbox("Nieuwe Tijd", ["07:00", "07:30", "08:00", "08:30"], 
-                                              index=["07:00", "07:30", "08:00", "08:30"].index(row['afspraak_tijd']))
+                        # Beveiliging voor tijd index (Oplossing voor image_8aa2b6.png)
+                        db_tijd = str(row['afspraak_tijd'])
+                        current_tijd = db_tijd if db_tijd in tijd_opties else tijd_opties[0]
+                        n_tijd = st.selectbox("Nieuwe Tijd", tijd_opties, index=tijd_opties.index(current_tijd))
 
                     if st.button("Update doorvoeren & Klant mailen"):
                         up_data = {"status": n_status, "afspraak_datum": str(n_datum), "afspraak_tijd": n_tijd}
@@ -199,18 +208,17 @@ elif keuze == "Medewerker Portaal":
                         
                         mail_info = {"email": row['email'], "voornaam": row['voornaam'], "status": n_status, "afspraak_datum": str(n_datum), "afspraak_tijd": n_tijd}
                         stuur_status_update_mail(mail_info)
-                        st.success(f"Dossier {sel_id} bijgewerkt! E-mail is verstuurd naar {row['email']}.")
+                        st.success(f"Dossier {sel_id} bijgewerkt! Mail is verstuurd.")
                         st.rerun()
 
                     st.write("---")
                     st.dataframe(df.sort_values('created_at', ascending=False), use_container_width=True)
                 else:
-                    st.info("Geen aanvragen in de database.")
+                    st.info("Geen aanvragen gevonden.")
 
             with tab2:
                 if not df.empty:
-                    st.subheader("Overzicht Geplande Afspraken")
-                    # Filter op alleen relevante kolommen voor een schone kalender
+                    st.subheader("📅 Overzicht Geplande Afspraken")
                     cal_view = df[['afspraak_datum', 'afspraak_tijd', 'voornaam', 'achternaam', 'status', 'telefoon']]
                     st.table(cal_view.sort_values(by=['afspraak_datum', 'afspraak_tijd']))
         except Exception as e:
