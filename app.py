@@ -27,26 +27,9 @@ except:
     st.error("Check uw Streamlit Secrets!")
     st.stop()
 
-# 3. E-mail Functie
-def stuur_mail(data):
-    try:
-        GMAIL_USER = st.secrets["GMAIL_USER"]
-        GMAIL_PASSWORD = st.secrets["GMAIL_PASSWORD"]
-        MEDEWERKER = "wanicacentrum.gz@gmail.com"
-        msg = MIMEMultipart()
-        msg['From'] = GMAIL_USER
-        msg['To'] = f"{data['email']}, {MEDEWERKER}"
-        msg['Subject'] = f"Registratie DGW: {data['voornaam']} {data['achternaam']}"
-        inhoud = f"Naam: {data['voornaam']} {data['achternaam']}\nID: {data['id_nummer']}\nAfspraak: {data['afspraak_datum']} om {data['afspraak_tijd']}"
-        msg.attach(MIMEText(inhoud, 'plain'))
-        server = smtplib.SMTP('smtp.gmail.com', 587)
-        server.starttls()
-        server.login(GMAIL_USER, GMAIL_PASSWORD)
-        server.sendmail(GMAIL_USER, [data['email'], MEDEWERKER], msg.as_string())
-        server.quit()
-        return True
-    except:
-        return False
+# 3. Initialiseer Login Status
+if "logged_in" not in st.session_state:
+    st.session_state["logged_in"] = False
 
 # 4. Navigatie
 st.sidebar.markdown("<h2 style='color: #2e7d32;'>DGW Menu</h2>", unsafe_allow_html=True)
@@ -87,42 +70,46 @@ if keuze == "Cliënt Registratie":
                 }
                 try:
                     supabase.table("aanvragen").insert(form_data).execute()
-                    stuur_mail(form_data)
-                    st.success(f"Bedankt {vnaam}! Alles is correct opgeslagen.")
+                    st.success(f"Bedankt {vnaam}! Alles is opgeslagen.")
                 except Exception as e:
-                    st.error(f"Fout: {e}")
+                    st.error(f"Database fout: {e}")
             else:
                 st.error("Afspraken kunnen alleen op Maandag en Woensdag.")
-        else:
-            st.warning("Vul a.u.b. alle velden in.")
 
 elif keuze == "Medewerker Portaal":
-    st.title("🔐 Login Medewerker")
-    
-    # Inlog velden
-    u = st.text_input("Gebruikersnaam").strip()
-    p = st.text_input("Wachtwoord", type="password").strip()
-    
-    if st.button("Inloggen"):
-        # Directe check op inloggegevens
-        if u == "ICT Wanica" and p == "l3lyd@rp":
-            st.session_state["logged_in"] = True
-            st.success("Succesvol ingelogd!")
-        else:
-            st.error("Onjuiste inloggegevens.")
+    if not st.session_state["logged_in"]:
+        st.title("🔐 Login Medewerker")
+        
+        # Gebruik formulier voor login om herladen te voorkomen
+        with st.form("login_form"):
+            u = st.text_input("Gebruikersnaam")
+            p = st.text_input("Wachtwoord", type="password")
+            login_submit = st.form_submit_button("Inloggen")
+            
+            if login_submit:
+                # Strippen van spaties en exact matchen
+                if u.strip() == "ICT Wanica" and p.strip() == "l3lyd@rp":
+                    st.session_state["logged_in"] = True
+                    st.rerun()
+                else:
+                    st.error("Onjuiste inloggegevens.")
+    else:
+        # Inhoud voor ingelogde medewerkers
+        st.title("📂 Beheerders Overzicht")
+        st.success("Welkom terug, ICT Wanica!")
+        
+        if st.button("Uitloggen"):
+            st.session_state["logged_in"] = False
+            st.rerun()
 
-    # Toon data als ingelogd
-    if st.session_state.get("logged_in"):
         st.write("---")
-        st.subheader("Ingekomen Aanvragen")
         try:
             res = supabase.table("aanvragen").select("*").execute()
             if res.data:
                 df = pd.DataFrame(res.data)
+                # Toon tabel met gegevens
                 st.dataframe(df, use_container_width=True)
+            else:
+                st.info("Geen aanvragen gevonden.")
         except Exception as e:
-            st.error(f"Fout bij laden: {e}")
-            
-        if st.button("Uitloggen"):
-            st.session_state["logged_in"] = False
-            st.rerun()
+            st.error(f"Fout bij laden data: {e}")
