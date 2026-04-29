@@ -1,125 +1,119 @@
 import streamlit as st
-from supabase import create_client
+from supabase import create_client, Client
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
-from datetime import datetime, time, timedelta
 
-# --- 1. CONFIGURATIE & BEVEILIGING ---
-try:
-    url = st.secrets["SUPABASE_URL"]
-    key = st.secrets["SUPABASE_KEY"]
-    GMAIL_USER = st.secrets["GMAIL_USER"]
-    GMAIL_PASSWORD = st.secrets["GMAIL_PASSWORD"]
-    supabase = create_client(url, key)
-except Exception as e:
-    st.error("Configuratie fout: Controleer je Streamlit Secrets.")
-    st.stop()
+# 1. Database verbinding (Supabase)
+url: str = st.secrets["supabase_url"]
+key: str = st.secrets["supabase_key"]
+supabase: Client = create_client(url, key)
 
-# --- 2. PAGINA INSTELLINGEN ---
-st.set_page_config(page_title="DGW Portaal", page_icon="📝", layout="wide")
+# 2. E-mail configuratie
+GMAIL_USER = st.secrets["gmail_user"]
+GMAIL_PASSWORD = st.secrets["gmail_password"]
 
-# --- 3. SIDEBAR ---
-with st.sidebar:
-    st.header("DGW Menu")
-    page = st.radio("Ga naar:", ["Cliënt Registratie", "Medewerker Login"])
+# DIT IS HET ADRES VAN DE MEDEWERKER DIE DE MAIL IN DE INBOX MOET KRIJGEN
+MEDEWERKER_EMAIL = "wanicacentrum.gz@gmail.com" 
 
-# --- 4. HULPFUNCTIES VOOR AFSPRAKEN ---
-def get_available_slots(datum_str):
-    # Alle mogelijke slots van 07:00 tot 15:00
-    all_slots = []
-    start = datetime.combine(datetime.today(), time(7, 0))
-    end = datetime.combine(datetime.today(), time(15, 0))
-    while start < end:
-        all_slots.append(start.strftime("%H:%M"))
-        start += timedelta(minutes=15)
-    
-    # Haal bezette slots op uit Supabase voor deze specifieke datum
+def send_email(burger_email, voornaam, achternaam, id_nummer, datum, tijd, bericht):
     try:
-        response = supabase.table("aanvragen").select("afspraak_tijd").eq("afspraak_datum", datum_str).execute()
-        occupied_slots = [record['afspraak_tijd'] for record in response.data]
-        # Filter de bezette slots eruit
-        available_slots = [slot for slot in all_slots if slot not in occupied_slots]
-        return available_slots
-    except:
-        return all_slots
+        msg = MIMEMultipart()
+        msg['From'] = GMAIL_USER
+        # Toont beide e-mailadressen in de 'Aan' regel van de mail
+        msg['To'] = f"{burger_email}, {MEDEWERKER_EMAIL}"
+        msg['Subject'] = f"Nieuwe Afspraak Aanvraag: {voornaam} {achternaam}"
 
-def send_confirmation(to_email, naam, datum, tijd):
-    try:
-        subject = "Bevestiging Afspraak - Dienst Grondzaken Wanica"
-        body = f"Beste {naam},\n\nUw afspraak op {datum} om {tijd} uur is succesvol vastgelegd.\n\nMet vriendelijke groet,\nDienst Grondzaken Wanica"
-        msg = MIMEMultipart(); msg['From'] = GMAIL_USER; msg['To'] = to_email; msg['Subject'] = subject
+        body = f"""
+        Geachte medewerker / heer/mevrouw {achternaam},
+
+        Er is een nieuwe afspraak ingediend via het portaal.
+
+        GEGEVENS VAN DE AANVRAAG:
+        -------------------------------------------
+        Naam burger: {voornaam} {achternaam}
+        ID-Nummer: {id_nummer}
+        Geplande datum: {datum}
+        Tijdstip: {tijd}
+        Omschrijving/Klacht: {bericht}
+        -------------------------------------------
+        Contactgegevens burger: {burger_email}
+
+        Dit is een automatisch bericht vanuit het Commissariaat Wanica Centrum Portaal.
+        """
         msg.attach(MIMEText(body, 'plain'))
-        server = smtplib.SMTP('smtp.gmail.com', 587); server.starttls()
-        server.login(GMAIL_USER, GMAIL_PASSWORD); server.send_message(msg); server.quit()
-    except: pass
 
-# --- 5. CLIËNT REGISTRATIE ---
-if page == "Cliënt Registratie":
-    st.title("📝 Portaal: Dienst Grondzaken Wanica")
-    st.subheader("Registratieformulier")
+        server = smtplib.SMTP('smtp.gmail.com', 587)
+        server.starttls()
+        server.login(GMAIL_USER, GMAIL_PASSWORD)
+        
+        # De 'ontvangers' lijst zorgt ervoor dat Gmail de mail naar beide adressen AFLEVERT
+        ontvangers = [burger_email, MEDEWERKER_EMAIL]
+        
+        text = msg.as_string()
+        server.sendmail(GMAIL_USER, ontvangers, text)
+        server.quit()
+        return True
+    except Exception as e:
+        st.error(f"E-mail verzendfout: {e}")
+        return False
 
-    with st.form("registratie_form"):
-        col1, col2 = st.columns(2)
-        with col1:
-            voornaam = st.text_input("Voornaam *")
-            id_nummer = st.text_input("ID-Nummer *")
-            telefoon = st.text_input("Telefoonnummer *")
-        with col2:
-            achternaam = st.text_input("Achternaam *")
-            lad_nummer = st.text_input("LAD Nummer *")
-            email = st.text_input("E-mailadres *")
+# 3. Streamlit Interface
+st.title("🏛️ Commissariaat Wanica Centrum")
+st.subheader("Afspraak & Klachten Portaal")
+
+with st.form("afspraak_form", clear_on_submit=True):
+    col1, col2 = st.columns(2)
+    with col1:
+        voornaam = st.text_input("Voornaam *")
+        id_nummer = st.text_input("ID-Nummer *")
+        telefoon = st.text_input("Telefoonnummer *")
+    with col2:
+        achternaam = st.text_input("Achternaam *")
+        lad_nummer = st.text_input("LAD Nummer *")
+        email_burger = st.text_input("Uw E-mailadres *")
+    
+    woonadres = st.text_input("Woonadres *")
+    bericht = st.text_area("Omschrijving van uw klacht of aanvraag *")
+    
+    st.write("---")
+    st.write("### Plan uw afspraak")
+    
+    c1, c2 = st.columns(2)
+    with c1:
+        datum = st.date_input("Kies een datum")
+    with c2:
+        tijd = st.selectbox("Beschikbare tijden", ["07:00", "07:15", "07:30", "07:45", "08:00"])
+
+    submit = st.form_submit_button("Verzenden")
+
+if submit:
+    if not (voornaam and achternaam and email_burger and id_nummer and bericht):
+        st.warning("Vul alstublieft alle verplichte velden in.")
+    else:
+        # Data voor de database
+        data = {
+            "voornaam": voornaam,
+            "achternaam": achternaam,
+            "email": email_burger,
+            "id_nummer": id_nummer,
+            "lad_nummer": lad_nummer,
+            "telefoon": telefoon,
+            "woonadres": woonadres,
+            "bericht": bericht,
+            "afspraak_datum": str(datum),
+            "afspraak_tijd": tijd
+        }
+        
+        try:
+            # Opslaan in Supabase
+            supabase.table("aanvragen").insert(data).execute()
             
-        woonadres = st.text_input("Woonadres *")
-        bericht = st.text_area("Omschrijving van uw klacht of aanvraag *")
-        
-        st.write("---")
-        st.write("### Plan uw afspraak (Maandag & Woensdag)")
-        
-        c1, c2 = st.columns(2)
-        with c1:
-            afspraak_datum = st.date_input("Kies een datum", min_value=datetime.today())
-            datum_str = str(afspraak_datum)
-        
-        # Controle op dag van de week (0=Maandag, 2=Woensdag)
-        dag_nr = afspraak_datum.weekday()
-        
-        with c2:
-            if dag_nr in [0, 2]:
-                beschikbare_tijden = get_available_slots(datum_str)
-                if beschikbare_tijden:
-                    gekozen_tijd = st.selectbox("Beschikbare tijden (15 min)", beschikbare_tijden)
-                else:
-                    st.error("Helaas, deze dag zit helemaal vol.")
-                    gekozen_tijd = None
+            # Verstuur naar Inbox van medewerker én burger
+            if send_email(email_burger, voornaam, achternaam, id_nummer, datum, tijd, bericht):
+                st.success(f"✅ Succes! Uw aanvraag is verwerkt. De medewerker ({MEDEWERKER_EMAIL}) heeft een melding ontvangen in de inbox.")
             else:
-                st.warning("⚠️ Kies een maandag of woensdag.")
-                gekozen_tijd = None
-
-        submit = st.form_submit_button("Verzenden")
-
-    if submit:
-        if dag_nr not in [0, 2]:
-            st.error("Selecteer een geldige dag (Maandag of Woensdag).")
-        elif not gekozen_tijd:
-            st.error("Kies een beschikbare tijd.")
-        elif voornaam and achternaam and email:
-            data = {
-                "voornaam": voornaam, "achternaam": achternaam, "email": email, 
-                "id_nummer": id_nummer, "bericht": bericht,
-                "afspraak_datum": datum_str, "afspraak_tijd": gekozen_tijd
-            }
-            try:
-                supabase.table("aanvragen").insert(data).execute()
-                send_confirmation(email, voornaam, datum_str, gekozen_tijd)
-                st.success(f"✅ Afspraak bevestigd op {datum_str} om {gekozen_tijd}!")
-            except Exception as e:
-                st.error(f"Fout bij opslaan: {e}")
-        else:
-            st.error("Vul alle verplichte velden in.")
-
-elif page == "Medewerker Login":
-    st.title("🔐 Medewerker Login")
-    st.text_input("Gebruikersnaam")
-    st.text_input("Wachtwoord", type="password")
-    st.button("Login")
+                st.info("De gegevens zijn opgeslagen, maar de e-mail kon niet worden verzonden.")
+        
+        except Exception as e:
+            st.error(f"Database fout: {e}")
