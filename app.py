@@ -4,21 +4,21 @@ import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 
-# 1. Pagina configuratie (voor de look uit je screenshot)
-st.set_page_config(page_title="Commissariaat Wanica Centrum", page_icon="🏛️")
+# 1. Pagina-instellingen
+st.set_page_config(page_title="Commissariaat Wanica Centrum", page_icon="🏛️", layout="centered")
 
-# 2. Verbinding met de database (Supabase)
-# We gebruiken hoofdletters zodat dit matcht met je Streamlit Secrets
+# 2. Database verbinding (Supabase)
+# Zorg dat deze namen EXACT zo in je Streamlit Secrets staan (Hoofdletters)
 try:
     URL = st.secrets["SUPABASE_URL"]
     KEY = st.secrets["SUPABASE_KEY"]
     supabase: Client = create_client(URL, KEY)
 except Exception as e:
-    st.error("Er is een probleem met de databaseverbinding. Controleer je Secrets.")
+    st.error("Configuratie fout: Controleer je Streamlit Secrets.")
     st.stop()
 
-# 3. E-mail Functie
-def send_email(burger_email, voornaam, achternaam, id_nummer, datum, tijd, omschrijving):
+# 3. E-mail Functie (Gmail)
+def send_notification(burger_email, vnaam, anaam, id_nr, lad_nr, tel, adres, bericht, datum, tijd):
     GMAIL_USER = st.secrets["GMAIL_USER"]
     GMAIL_PASSWORD = st.secrets["GMAIL_PASSWORD"]
     MEDEWERKER_EMAIL = "wanicacentrum.gz@gmail.com"
@@ -27,20 +27,27 @@ def send_email(burger_email, voornaam, achternaam, id_nummer, datum, tijd, omsch
         msg = MIMEMultipart()
         msg['From'] = GMAIL_USER
         msg['To'] = f"{burger_email}, {MEDEWERKER_EMAIL}"
-        msg['Subject'] = f"Nieuwe Aanvraag: {voornaam} {achternaam}"
+        msg['Subject'] = f"Nieuwe Aanvraag: {vnaam} {anaam}"
 
         body = f"""
-        Nieuwe afspraak/klacht binnengekomen:
+        Er is een nieuwe aanvraag ingediend via het portaal.
 
-        Naam: {voornaam} {achternaam}
-        ID-Nummer: {id_nummer}
+        GEGEVENS VAN DE BURGER:
+        -------------------------------------------
+        Naam: {vnaam} {anaam}
+        ID-Nummer: {id_nr}
+        LAD-Nummer: {lad_nr}
+        Telefoon: {tel}
+        Woonadres: {adres}
+        E-mail: {burger_email}
+
+        AFSPRAAK DETAILS:
+        -------------------------------------------
         Datum: {datum}
-        Tijd: {tijd}
+        Tijdstip: {tijd}
+        Omschrijving: {bericht}
 
-        Omschrijving:
-        {omschrijving}
-
-        Contact burger: {burger_email}
+        Dit is een automatisch bericht van het Commissariaat Wanica Centrum.
         """
         msg.attach(MIMEText(body, 'plain'))
 
@@ -51,42 +58,51 @@ def send_email(burger_email, voornaam, achternaam, id_nummer, datum, tijd, omsch
         server.quit()
         return True
     except Exception as e:
-        st.error(f"E-mail kon niet worden verzonden: {e}")
+        st.error(f"E-mail fout: {e}")
         return False
 
-# 4. De Interface (Precies zoals in je screenshot)
+# 4. Gebruikersinterface (Visueel zoals in image_968821.png maar met ALLE velden)
 st.markdown("# 🏛️ Commissariaat Wanica Centrum")
 st.markdown("### Afspraak & Klachten Portaal")
 
-with st.form("main_form", clear_on_submit=True):
+with st.form("volledig_formulier", clear_on_submit=True):
     col1, col2 = st.columns(2)
     with col1:
         vnaam = st.text_input("Voornaam *")
         id_nr = st.text_input("ID-Nummer *")
+        tel = st.text_input("Telefoonnummer *")
     with col2:
         anaam = st.text_input("Achternaam *")
-        email = st.text_input("Uw E-mailadres *")
+        lad_nr = st.text_input("LAD Nummer (indien van toepassing)")
+        email_burger = st.text_input("Uw E-mailadres *")
     
+    adres = st.text_input("Woonadres *")
     omschrijving = st.text_area("Omschrijving van uw klacht of aanvraag *")
     
     st.markdown("---")
     
-    datum = st.date_input("Kies een datum")
-    tijd = st.selectbox("Tijd", ["07:00", "07:15", "07:30", "07:45", "08:00", "08:15", "08:30"])
+    c1, c2 = st.columns(2)
+    with c1:
+        datum = st.date_input("Kies een datum")
+    with c2:
+        tijd = st.selectbox("Beschikbare tijden", ["07:00", "07:15", "07:30", "07:45", "08:00", "08:15", "08:30"])
 
-    submit_button = st.form_submit_button("Verzenden")
+    submit = st.form_submit_button("Verzenden")
 
-# 5. Logica bij verzenden
-if submit_button:
-    if not (vnaam and anaam and id_nr and email and omschrijving):
-        st.warning("Vul alstublieft alle velden met een * in.")
+# 5. Verwerkingslogica
+if submit:
+    if not (vnaam and anaam and id_nr and email_burger and adres and omschrijving):
+        st.warning("Vul alstublieft alle verplichte velden (*) in.")
     else:
-        # Stap A: Opslaan in Supabase
+        # Opslaan in database
         data = {
             "voornaam": vnaam,
             "achternaam": anaam,
             "id_nummer": id_nr,
-            "email": email,
+            "lad_nummer": lad_nr,
+            "telefoon": tel,
+            "woonadres": adres,
+            "email": email_burger,
             "bericht": omschrijving,
             "afspraak_datum": str(datum),
             "afspraak_tijd": tijd
@@ -95,10 +111,8 @@ if submit_button:
         try:
             supabase.table("aanvragen").insert(data).execute()
             
-            # Stap B: E-mail versturen
-            if send_email(email, vnaam, anaam, id_nr, datum, tijd, omschrijving):
-                st.success(f"✅ Uw aanvraag is succesvol verzonden, {vnaam}! Er is een kopie gestuurd naar de medewerker.")
-            else:
-                st.info("De gegevens zijn opgeslagen, maar de e-mailbevestiging is niet gelukt.")
+            # E-mail versturen met het app-wachtwoord uit image_96f81e.png
+            if send_notification(email_burger, vnaam, anaam, id_nr, lad_nr, tel, adres, omschrijving, datum, tijd):
+                st.success(f"✅ Bedankt {vnaam}! Uw aanvraag is succesvol verzonden naar de medewerker.")
         except Exception as e:
-            st.error(f"Fout bij opslaan in database: {e}")
+            st.error(f"Er is een fout opgetreden bij het opslaan: {e}")
