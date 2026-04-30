@@ -12,11 +12,8 @@ st.markdown("""
     .stTextInput>div>div>input { border-color: #2e7d32; }
     .main { background-color: #ffffff; }
     .highlight-box { 
-        padding: 15px; 
-        border-radius: 10px; 
-        border: 2px solid #2e7d32; 
-        background-color: #f1f8e9; 
-        margin-bottom: 20px; 
+        padding: 15px; border-radius: 10px; border: 2px solid #2e7d32; 
+        background-color: #f1f8e9; margin-bottom: 20px; 
     }
     </style>
     """, unsafe_allow_html=True)
@@ -32,7 +29,6 @@ except Exception:
 
 # --- 3. HELPER FUNCTIES ---
 def get_beschikbare_tijden(datum):
-    # Genereer tijden tussen 07:00 en 15:00 met 15 min interval
     start = datetime.datetime.strptime("07:00", "%H:%M")
     eind = datetime.datetime.strptime("15:00", "%H:%M")
     tijden = []
@@ -40,12 +36,11 @@ def get_beschikbare_tijden(datum):
         tijden.append(start.strftime("%H:%M"))
         start += datetime.timedelta(minutes=15)
     
-    # Haal bezette tijden op uit Supabase
     res = supabase.table("aanvragen").select("afspraak_tijd").eq("afspraak_datum", str(datum)).execute()
     bezette_tijden = [r['afspraak_tijd'] for r in res.data] if res.data else []
     return tijden, bezette_tijden
 
-# --- 4. AUTHENTICATIE ---
+# --- 4. AUTHENTICATIE STATUS ---
 if "logged_in" not in st.session_state:
     st.session_state["logged_in"] = False
     st.session_state["user_rol"] = None
@@ -59,8 +54,8 @@ if keuze == "Cliënt Registratie":
     
     st.markdown("""
         <div class="highlight-box">
-            <h3 style='color: #2e7d32; margin-top: 0;'>📅 Belangrijke Informatie</h3>
-            <p>Afspraken zijn uitsluitend mogelijk op <b>Maandag</b> en <b>Woensdag</b> (07:00u - 15:00u).</p>
+            <h3 style='color: #2e7d32; margin-top: 0;'>📅 Afspraak Informatie</h3>
+            <p>Afspraken uitsluitend op: <b>Maandag</b> en <b>Woensdag</b> (07:00u - 15:00u).</p>
         </div>
     """, unsafe_allow_html=True)
     
@@ -79,20 +74,18 @@ if keuze == "Cliënt Registratie":
         bericht = st.text_area("Omschrijving van uw verzoek of klacht *")
         
         st.write("---")
-        st.subheader("📅 Plan uw afspraak")
+        st.subheader("📄 Documenten")
+        geuploade_file = st.file_uploader("Upload relevante documenten (PDF/JPG/PNG)", type=['pdf', 'png', 'jpg', 'jpeg'])
         
+        st.write("---")
+        st.subheader("📅 Plan uw afspraak")
         datum = st.date_input("Kies een datum", min_value=datetime.date.today())
         
-        # --- DE WATERDICHTE FIX VOOR DAG-HERKENNING ---
-        # isoweekday() geeft ALTIJD 1 voor Maandag en 3 voor Woensdag, ongeacht server-taal.
+        # FIX: Gebruik isoweekday() (1=Ma, 3=Wo) om server-verwarring te voorkomen
         iso_dag = datum.isoweekday() 
-        
-        # Handmatige vertaling om verwarring te voorkomen
-        nederlandse_dagen = {1: "Maandag", 2: "Dinsdag", 3: "Woensdag", 4: "Donderdag", 
-                             5: "Vrijdag", 6: "Zaterdag", 7: "Zondag"}
-        huidige_dagnaam = nederlandse_dagen.get(iso_dag)
+        dag_namen = {1: "Maandag", 2: "Dinsdag", 3: "Woensdag", 4: "Donderdag", 5: "Vrijdag", 6: "Zaterdag", 7: "Zondag"}
+        huidige_dagnaam = dag_namen.get(iso_dag)
 
-        # Controleer strikt op 1 (Maandag) en 3 (Woensdag)
         if iso_dag not in [1, 3]:
             st.error(f"❌ {huidige_dagnaam} is niet beschikbaar. Kies a.u.b. een Maandag of Woensdag.")
             submit = st.form_submit_button("Dag niet beschikbaar", disabled=True)
@@ -101,25 +94,26 @@ if keuze == "Cliënt Registratie":
             beschikbare_opties = [t for t in alle_tijden if t not in bezette_tijden]
             
             if beschikbare_opties:
-                st.success(f"✅ {huidige_dagnaam} geselecteerd. Kies een tijdstip.")
+                st.success(f"✅ {huidige_dagnaam} geselecteerd.")
                 tijd = st.selectbox("Beschikbare tijden *", beschikbare_opties)
                 submit = st.form_submit_button("Aanvraag Indienen")
             else:
-                st.error(f"🔴 Helaas, deze {huidige_dagnaam} is al volgeboekt.")
+                st.error("🔴 Volgeboekt op deze dag.")
                 submit = False
 
     if submit:
-        if vnaam and anaam and id_nr and tel:
+        if vnaam and anaam and id_nr and tel and bericht:
+            doc_naam = geuploade_file.name if geuploade_file else "Geen document"
             data = {
                 "voornaam": vnaam, "achternaam": anaam, "email": email, "id_nummer": id_nr,
                 "lad_nummer": lad_nr, "telefoon": tel, "woonadres": woonadres,
                 "bericht": bericht, "afspraak_datum": str(datum), "afspraak_tijd": tijd,
-                "status": "In behandeling"
+                "document_naam": doc_naam, "status": "In behandeling"
             }
             supabase.table("aanvragen").insert(data).execute()
-            st.success(f"✅ Gelukt! Uw afspraak staat voor {huidige_dagnaam} {datum} om {tijd}.")
+            st.success(f"✅ Uw aanvraag voor {huidige_dagnaam} {datum} is succesvol verzonden!")
         else:
-            st.warning("Vul a.u.b. alle verplichte velden (*) in.")
+            st.warning("Vul alle verplichte velden (*) in.")
 
 # --- 6. MEDEWERKER PORTAAL ---
 elif keuze == "Medewerker Portaal":
@@ -137,22 +131,27 @@ elif keuze == "Medewerker Portaal":
                     st.session_state.update({"logged_in": True, "user_rol": res.data[0].get('rol', 'Medewerker')})
                     st.rerun()
                 else:
-                    st.error("Ongeldige inloggegevens.")
+                    st.error("Foutieve gegevens.")
     else:
-        st.sidebar.button("Uitloggen", on_click=lambda: st.session_state.update({"logged_in": False}))
+        st.sidebar.button("Veilig Uitloggen", on_click=lambda: st.session_state.update({"logged_in": False}))
         tabs = st.tabs(["📋 Dossiers & DC", "📅 Kalender", "📊 Rapportage", "⚙️ Admin"])
 
-        with tabs[0]: # DOSSIERS
+        with tabs[0]: # DOSSIERS & DC-NUMMERS
             res = supabase.table("aanvragen").select("*").execute()
             if res.data:
                 df = pd.DataFrame(res.data)
                 st.dataframe(df)
-                with st.expander("📝 Dossier Bewerken"):
-                    sel_id = st.selectbox("Kies ID", df['id'].tolist())
+                with st.expander("📝 Dossier Bewerken / DC Nummer invoeren"):
+                    sel_id = st.selectbox("Selecteer Dossier ID", df['id'].tolist())
                     row = df[df['id'] == sel_id].iloc[0]
-                    new_dc = st.text_input("DC Nummer", value=str(row.get('dc_nummer', '')))
-                    opts = ["In behandeling", "Bevestigd", "Verschoven", "Afgehandeld", "Afgewezen"]
-                    new_s = st.selectbox("Status", opts, index=opts.index(row['status']) if row['status'] in opts else 0)
-                    if st.button("Opslaan"):
-                        supabase.table("aanvragen").update({"dc_nummer": new_dc, "status": new_s}).eq("id", sel_id).execute()
-                        st.rerun()
+                    
+                    c1, c2 = st.columns(2)
+                    with c1:
+                        # Medewerkers kunnen DC nummers invoeren en wijzigen
+                        new_dc = st.text_input("DC Nummer", value=str(row.get('dc_nummer', '')))
+                        opts = ["In behandeling", "Bevestigd", "Verschoven", "Afgehandeld", "Afgewezen"]
+                        new_s = st.selectbox("Status", opts, index=opts.index(row['status']) if row['status'] in opts else 0)
+                        if st.button("Wijzigingen Opslaan"):
+                            supabase.table("aanvragen").update({"dc_nummer": new_dc, "status": new_s}).eq("id", sel_id).execute()
+                            st.success("Dossier bijgewerkt!")
+                            st.rerun()
