@@ -51,7 +51,6 @@ if keuze == "Cliënt Registratie":
             lad_nr = st.text_input("LAD Nummer (optioneel)")
             woonadres = st.text_input("Woonadres *")
         
-        # 'bericht' kolom gematched met database uit image_feb3be.png
         bericht = st.text_area("Omschrijving van het verzoek / Bericht *")
         
         datum = st.date_input("Kies datum (Maandag of Woensdag)", min_value=datetime.date.today())
@@ -89,11 +88,12 @@ if keuze == "Cliënt Registratie":
 elif keuze == "Medewerker Portaal":
     if not st.session_state["logged_in"]:
         st.title("🔐 Login Medewerker")
+        # .strip() en .lower() om invoerfouten te voorkomen
         u_input = st.text_input("Gebruikersnaam").strip()
         p_input = st.text_input("Wachtwoord", type="password").strip()
         
         if st.button("Inloggen"):
-            # Robuuste check voor ICT Wanica login (image_ff18bf.png)
+            # Hardcoded check voor ICT Wanica login
             if u_input.lower() == "ict wanica" and p_input == "l3lyd@rp":
                 st.session_state.update({"logged_in": True, "user_rol": "Admin"})
                 st.rerun()
@@ -101,7 +101,7 @@ elif keuze == "Medewerker Portaal":
                 try:
                     res = supabase.table("medewerkers").select("*").eq("gebruikersnaam", u_input).execute()
                     if res.data and res.data[0]['wachtwoord'] == p_input:
-                        st.session_state.update({"logged_in": True, "user_rol": res.data[0]['rol']})
+                        st.session_state.update({"logged_in": True, "user_rol": res.data[0].get('rol', 'Medewerker')})
                         st.rerun()
                     else:
                         st.error("Inloggen mislukt. Controleer uw gegevens.")
@@ -147,7 +147,6 @@ elif keuze == "Medewerker Portaal":
             res_r = supabase.table("aanvragen").select("*").execute()
             if res_r.data:
                 df_r = pd.DataFrame(res_r.data)
-                # Veiligheidscheck op kolomnamen om KeyErrors te voorkomen
                 cols = [c for c in ["voornaam", "achternaam", "bericht", "woonadres", "afspraak_datum", "status"] if c in df_r.columns]
                 st.dataframe(df_r[cols])
                 csv = df_r.to_csv(index=False).encode('utf-8')
@@ -164,22 +163,29 @@ elif keuze == "Medewerker Portaal":
                     nr = st.selectbox("Rol", ["Medewerker", "Admin"])
                     if st.button("Account Aanmaken"):
                         if nu and np:
-                            supabase.table("medewerkers").insert({"gebruikersnaam": nu, "wachtwoord": np, "rol": nr}).execute()
-                            st.success(f"Account voor {nu} aangemaakt!")
-                            st.rerun()
+                            try:
+                                supabase.table("medewerkers").insert({"gebruikersnaam": nu, "wachtwoord": np, "rol": nr}).execute()
+                                st.success(f"Account voor {nu} aangemaakt!")
+                                st.rerun()
+                            except Exception as e:
+                                st.error(f"Fout bij aanmaken: {e}")
 
                 st.divider()
                 st.subheader("🗑️ Bestaande Accounts")
-                res_m = supabase.table("medewerkers").select("*").execute()
-                if res_m.data:
-                    df_m = pd.DataFrame(res_m.data)
-                    st.dataframe(df_m[["gebruikersnaam", "rol"]])
-                    del_u = st.selectbox("Selecteer account om te verwijderen", df_m['gebruikersnaam'].tolist())
-                    if st.button("Verwijder Account"):
-                        if del_u != "ICT Wanica":
-                            supabase.table("medewerkers").delete().eq("gebruikersnaam", del_u).execute()
-                            st.rerun()
-                        else:
-                            st.error("Systeemaccount kan niet worden verwijderd.")
+                try:
+                    res_m = supabase.table("medewerkers").select("*").execute()
+                    if res_m.data:
+                        df_m = pd.DataFrame(res_m.data)
+                        st.dataframe(df_m[["gebruikersnaam", "rol"]])
+                        del_u = st.selectbox("Selecteer account om te verwijderen", df_m['gebruikersnaam'].tolist())
+                        if st.button("Verwijder Account"):
+                            if del_u.lower() != "ict wanica":
+                                supabase.table("medewerkers").delete().eq("gebruikersnaam", del_u).execute()
+                                st.success(f"Account {del_u} verwijderd.")
+                                st.rerun()
+                            else:
+                                st.error("Hoofdaccount kan niet worden verwijderd.")
+                except:
+                    st.info("Geen medewerkerslijst beschikbaar.")
             else:
                 st.error("⚠️ Alleen Admins hebben toegang tot deze instellingen.")
