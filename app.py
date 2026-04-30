@@ -6,7 +6,6 @@ import pandas as pd
 # --- 1. CONFIGURATIE & THEMA ---
 st.set_page_config(page_title="DGW Wanica Portaal", page_icon="📝", layout="wide")
 
-# CSS voor de visuele tijdblokken (Groen/Rood)
 st.markdown("""
     <style>
     .tijd-knop {
@@ -25,9 +24,13 @@ st.markdown("""
     """, unsafe_allow_html=True)
 
 # --- 2. DATABASE VERBINDING ---
-URL = st.secrets["SUPABASE_URL"]
-KEY = st.secrets["SUPABASE_KEY"]
-supabase: Client = create_client(URL, KEY)
+try:
+    URL = st.secrets["SUPABASE_URL"]
+    KEY = st.secrets["SUPABASE_KEY"]
+    supabase: Client = create_client(URL, KEY)
+except Exception:
+    st.error("Systeemfout: Databaseverbinding mislukt!")
+    st.stop()
 
 # --- 3. LOGICA VOOR BESCHIKBAARHEID ---
 def get_tijd_status(datum):
@@ -39,10 +42,8 @@ def get_tijd_status(datum):
         alle_tijden.append(start.strftime("%H:%M"))
         start += datetime.timedelta(minutes=15)
     
-    # Haal bezette tijden op
-    res = supabase.table("aanvragen").select("afspraak_tijd").eq("afspraak_datum", str(datum)).execute()
+    res = supabase.table("aanvagen").select("afspraak_tijd").eq("afspraak_datum", str(datum)).execute()
     bezette_tijden = [r['afspraak_tijd'] for r in res.data] if res.data else []
-    
     return alle_tijden, bezette_tijden
 
 # --- 4. INTERFACE ---
@@ -53,18 +54,23 @@ menu = st.sidebar.radio("Navigatie", ["Cliënt Registratie", "Medewerker Portaal
 if menu == "Cliënt Registratie":
     st.subheader("Nieuwe Aanvraag")
     
-    # Invoervelden voor cliëntgegevens
     col1, col2 = st.columns(2)
     with col1:
         vnaam = st.text_input("Voornaam *")
         anaam = st.text_input("Achternaam *")
         id_nr = st.text_input("ID-Nummer *")
+        woonadres = st.text_input("Woonadres *") # Woonadres hersteld
     with col2:
         tel = st.text_input("Telefoonnummer *")
         email = st.text_input("E-mailadres")
         lad_nr = st.text_input("LAD Nummer")
     
     bericht = st.text_area("Omschrijving klacht/verzoek *")
+
+    st.write("---")
+    st.subheader("📁 Documenten Uploaden")
+    st.info("Upload relevante documenten zoals uw ID-kaart of grondpapieren (PDF, JPG, PNG).")
+    uploaded_files = st.file_uploader("Kies bestanden om te uploaden", accept_multiple_files=True) # Document upload
 
     st.write("---")
     st.subheader("📅 Plan uw afspraak")
@@ -77,8 +83,6 @@ if menu == "Cliënt Registratie":
         alle_tijden, bezette_tijden = get_tijd_status(datum)
         
         st.write("**Directe beschikbaarheid:** (Groen = Vrij, Rood = Bezet)")
-        
-        # Grid weergave van de tijden voor direct overzicht
         cols = st.columns(6)
         for i, t in enumerate(alle_tijden):
             is_bezet = t in bezette_tijden
@@ -93,26 +97,24 @@ if menu == "Cliënt Registratie":
         if vrije_opties:
             geselecteerde_tijd = st.selectbox("Kies uw tijdstip *", vrije_opties)
             
-            # --- DE AANGEPASTE KNOP ---
-            if st.button("Aanvraag indienen"):
-                if vnaam and anaam and id_nr and bericht:
+            if st.button("Aanvraag indienen"): # Knoptekst aangepast
+                if vnaam and anaam and id_nr and woonadres and bericht:
                     data = {
                         "voornaam": vnaam, "achternaam": anaam, "id_nummer": id_nr,
-                        "telefoon": tel, "email": email, "lad_nummer": lad_nr,
-                        "bericht": bericht, "afspraak_datum": str(datum),
+                        "woonadres": woonadres, "telefoon": tel, "email": email, 
+                        "lad_nummer": lad_nr, "bericht": bericht, "afspraak_datum": str(datum),
                         "afspraak_tijd": geselecteerde_tijd, "status": "In behandeling"
                     }
                     supabase.table("aanvragen").insert(data).execute()
-                    st.success(f"✅ Uw aanvraag voor {datum} om {geselecteerde_tijd}u is succesvol ingediend!")
+                    st.success(f"✅ Uw aanvraag voor {datum} om {geselecteerde_tijd}u is ingediend!")
                 else:
                     st.warning("Vul a.u.b. alle velden met een * in.")
         else:
             st.error("Geen beschikbare tijden meer op deze dag.")
 
 elif menu == "Medewerker Portaal":
-    st.subheader("Overzicht Aanvragen")
-    # Hier kunnen baliemedewerkers DC-nummers invoeren of wijzigen bij fouten
+    st.subheader("Dossierbeheer")
     res = supabase.table("aanvragen").select("*").execute()
     if res.data:
         df = pd.DataFrame(res.data)
-        st.dataframe(df)
+        st.dataframe(df) # Baliemedewerkers kunnen hier gegevens inzien en corrigeren
