@@ -10,21 +10,17 @@ from email.mime.application import MIMEApplication
 # --- 1. CONFIGURATIE ---
 st.set_page_config(page_title="DGW Wanica Portaal", layout="wide")
 
-# Styling behouden (Groen/Wit)
 st.markdown("""
     <style>
-    .tijd-knop { display: inline-block; padding: 10px; margin: 5px; border-radius: 5px; text-align: center; font-weight: bold; width: 85px; }
-    .vrij { background-color: #e8f5e9; border: 2px solid #2e7d32; color: #2e7d32; }
-    .bezet { background-color: #ffebee; border: 2px solid #c62828; color: #c62828; text-decoration: line-through; }
     .stButton>button { background-color: #2e7d32; color: white; border-radius: 5px; width: 100%; height: 50px; font-size: 18px; border: none; }
     </style>
     """, unsafe_allow_html=True)
 
-# Supabase Verbinding
+# Verbinding met Supabase
 try:
     supabase = create_client(st.secrets["SUPABASE_URL"], st.secrets["SUPABASE_KEY"])
 except Exception as e:
-    st.error(f"Configuratie fout: {e}")
+    st.error("Configuratie fout. Controleer uw secrets.")
     st.stop()
 
 def stuur_mail(ontvanger, onderwerp, inhoud, bestanden=None):
@@ -44,7 +40,7 @@ def stuur_mail(ontvanger, onderwerp, inhoud, bestanden=None):
             server.login(st.secrets["EMAIL_USER"], st.secrets["EMAIL_PASS"])
             server.send_message(msg)
     except Exception as e:
-        st.warning(f"Mail niet verzonden: {e}")
+        st.warning(f"E-mail niet verzonden: {e}")
 
 # --- 2. INTERFACE ---
 st.title("📝 Dienst Grondzaken Wanica (DGW)")
@@ -53,77 +49,71 @@ menu = st.sidebar.radio("Navigatie", ["Cliënt Registratie", "Medewerker Portaal
 if menu == "Cliënt Registratie":
     st.subheader("Nieuwe Aanvraag")
     
-    col1, col2 = st.columns(2)
-    with col1:
-        vnaam = st.text_input("Voornaam *")
-        anaam = st.text_input("Achternaam *")
-        id_nr = st.text_input("ID-Nummer *")
-        woonadres = st.text_input("Woonadres *")
-    with col2:
-        tel = st.text_input("Telefoonnummer *")
-        email = st.text_input("E-mailadres *")
-        lad_nr = st.text_input("LAD Nummer (optioneel)")
-    
-    bericht = st.text_area("Omschrijving klacht/verzoek *")
-    uploaded_files = st.file_uploader("Documenten Uploaden", accept_multiple_files=True)
-
-    st.write("---")
-    datum = st.date_input("Kies een datum", min_value=datetime.date.today())
-
-    # Alleen Maandag en Woensdag toegestaan
-    if datum.weekday() not in [0, 2]:
-        st.error("Let op: Afspraken kunnen alleen op Maandag en Woensdag gepland worden.")
-        gekozen_tijd = "Geen tijd"
-    else:
-        # Tijdslots 07:30 - 14:00 (15 min interval)
-        tijden = [f"{h:02d}:{m:02d}" for h in range(7, 15) for m in [0, 15, 30, 45]]
-        slots = [t for t in tijden if "07:30" <= t <= "14:00"]
+    # Gebruik van st.form lost de validatiefout op de screenshots op
+    with st.form("aanvraag_formulier", clear_on_submit=False):
+        c1, c2 = st.columns(2)
+        with c1:
+            vnaam = st.text_input("Voornaam *")
+            anaam = st.text_input("Achternaam *")
+            id_nr = st.text_input("ID-Nummer *")
+            woonadres = st.text_input("Woonadres *")
+        with c2:
+            tel = st.text_input("Telefoonnummer *")
+            email = st.text_input("E-mailadres *")
+            lad_nr = st.text_input("LAD Nummer (optioneel)")
         
-        # Check bezette tijden in Supabase
-        res = supabase.table("aanvragen").select("afspraak_tijd").eq("afspraak_datum", str(datum)).execute()
-        bezet = [r['afspraak_tijd'] for r in res.data] if res.data else []
-        vrij = [t for t in slots if t not in bezet]
-        
-        gekozen_tijd = st.selectbox("Selecteer tijdstip *", ["--- Selecteer een tijdstip ---"] + vrij)
+        bericht = st.text_area("Omschrijving klacht/verzoek *")
+        uploaded_files = st.file_uploader("Documenten Uploaden", accept_multiple_files=True)
 
         st.write("---")
+        datum = st.date_input("Kies een datum", min_value=datetime.date.today())
+        
+        # Tijdslots ophalen (Alleen op Maandag en Woensdag)
+        vrije_tijden = []
+        if datum.weekday() in [0, 2]:
+            tijden = [f"{h:02d}:{m:02d}" for h in range(7, 15) for m in [0, 15, 30, 45]]
+            slots = [t for t in tijden if "07:30" <= t <= "14:00"]
+            res = supabase.table("aanvragen").select("afspraak_tijd").eq("afspraak_datum", str(datum)).execute()
+            bezet = [r['afspraak_tijd'] for r in res.data] if res.data else []
+            vrije_tijden = [t for t in slots if t not in bezet]
 
-        # VALIDATIE LOGICA: De knop werkt alleen als alles gevuld is
-        foutmeldingen = []
-        if not vnaam: foutmeldingen.append("Voornaam")
-        if not anaam: foutmeldingen.append("Achternaam")
-        if not id_nr: foutmeldingen.append("ID-Nummer")
-        if not woonadres: foutmeldingen.append("Woonadres")
-        if not tel: foutmeldingen.append("Telefoonnummer")
-        if not email: foutmeldingen.append("E-mailadres")
-        if not bericht: foutmeldingen.append("Omschrijving")
-        if gekozen_tijd == "--- Selecteer een tijdstip ---": foutmeldingen.append("Tijdstip")
+        gekozen_tijd = st.selectbox("Selecteer tijdstip *", ["--- Kies een tijdstip ---"] + vrije_tijden)
+        
+        submit = st.form_submit_button("Verstuur Aanvraag")
 
-        if st.button("Verstuur Aanvraag"):
-            if not foutmeldingen:
-                # Alles is OK -> Opslaan en verzenden
-                data = {
+        if submit:
+            mist_info = []
+            if not vnaam: mist_info.append("Voornaam")
+            if not anaam: mist_info.append("Achternaam")
+            if not id_nr: mist_info.append("ID-Nummer")
+            if not woonadres: mist_info.append("Woonadres")
+            if not tel: mist_info.append("Telefoonnummer")
+            if not email: mist_info.append("E-mailadres")
+            if not bericht: mist_info.append("Omschrijving")
+            if gekozen_tijd == "--- Kies een tijdstip ---": mist_info.append("Tijdstip")
+
+            if not mist_info:
+                # DATA OPSLAAN
+                payload = {
                     "voornaam": vnaam, "achternaam": anaam, "id_nummer": id_nr,
                     "woonadres": woonadres, "telefoon": tel, "email": email, 
                     "lad_nummer": lad_nr, "bericht": bericht, "afspraak_datum": str(datum),
                     "afspraak_tijd": gekozen_tijd, "status": "In behandeling"
                 }
-                supabase.table("aanvragen").insert(data).execute()
+                supabase.table("aanvragen").insert(payload).execute()
                 
-                # Mails versturen
-                mail_body = f"Nieuwe afspraak DGW:\n\nNaam: {vnaam} {anaam}\nAdres: {woonadres}\nTel: {tel}\nAfspraak: {datum} om {gekozen_tijd}u"
-                stuur_mail(st.secrets["EMAIL_USER"], f"Nieuwe Aanvraag: {vnaam}", mail_body, uploaded_files)
-                stuur_mail(email, "DGW Bevestiging", f"Beste {vnaam}, uw afspraak is vastgelegd op {datum} om {gekozen_tijd}u.")
+                # MAILS VERSTUREN
+                mail_tekst = f"Nieuwe aanvraag:\nNaam: {vnaam} {anaam}\nTel: {tel}\nAfspraak: {datum} om {gekozen_tijd}u"
+                stuur_mail(st.secrets["EMAIL_USER"], f"Nieuwe Aanvraag: {vnaam}", mail_tekst, uploaded_files)
+                stuur_mail(email, "Bevestiging DGW", f"Beste {vnaam}, uw afspraak is ontvangen voor {datum}.")
                 
-                st.success("✅ Uw aanvraag is succesvol ingediend! U ontvangt een bevestiging per mail.")
+                st.success("✅ Uw aanvraag is succesvol ingediend!")
                 st.balloons()
             else:
-                # Toon precies wat er mist
-                st.error(f"⚠️ Er ontbreekt nog informatie: {', '.join(foutmeldingen)}.")
+                st.error(f"⚠️ Er ontbreekt nog informatie: {', '.join(mist_info)}.")
 
 elif menu == "Medewerker Portaal":
-    st.subheader("Overzicht van alle aanvragen")
+    st.subheader("Overzicht aanvragen")
     res = supabase.table("aanvragen").select("*").execute()
     if res.data:
-        df = pd.DataFrame(res.data)
-        st.dataframe(df)
+        st.dataframe(pd.DataFrame(res.data))
