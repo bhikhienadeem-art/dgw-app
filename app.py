@@ -10,7 +10,6 @@ from email.mime.application import MIMEApplication
 # --- 1. CONFIGURATIE & STYLING ---
 st.set_page_config(page_title="DGW Wanica Portaal", layout="wide")
 
-# Groen/wit interface styling
 st.markdown("""
     <style>
     .tijd-knop { display: inline-block; padding: 10px; margin: 5px; border-radius: 5px; text-align: center; font-weight: bold; width: 85px; }
@@ -27,6 +26,7 @@ except:
     st.error("Configuratie fout in Secrets.")
     st.stop()
 
+# --- VERBETERDE MAIL FUNCTIE ---
 def stuur_mail(ontvanger, onderwerp, inhoud, bestanden=None):
     try:
         msg = MIMEMultipart()
@@ -34,19 +34,22 @@ def stuur_mail(ontvanger, onderwerp, inhoud, bestanden=None):
         msg['From'] = st.secrets["EMAIL_USER"]
         msg['To'] = ontvanger
         msg.attach(MIMEText(inhoud))
+        
         if bestanden:
             for f in bestanden:
+                f.seek(0)  # Zorg dat we het bestand vanaf het begin lezen
                 bijlage = MIMEApplication(f.read(), Name=f.name)
                 bijlage['Content-Disposition'] = f'attachment; filename="{f.name}"'
                 msg.attach(bijlage)
-                f.seek(0)
+                f.seek(0) # Reset voor de volgende ontvanger
+
         with smtplib.SMTP_SSL('smtp.gmail.com', 465) as server:
             server.login(st.secrets["EMAIL_USER"], st.secrets["EMAIL_PASS"])
             server.send_message(msg)
     except Exception as e:
-        st.warning(f"Mailfout: {e}")
+        st.warning(f"Mailfout naar {ontvanger}: {e}")
 
-# --- 2. LOGIN SYSTEEM (Tabel: medewerkers) ---
+# --- 2. LOGIN SYSTEEM ---
 if 'logged_in' not in st.session_state:
     st.session_state.logged_in = False
     st.session_state.role = None
@@ -57,10 +60,8 @@ def login():
     try:
         res = supabase.table("medewerkers").select("*").execute()
         user_list = [u['gebruikersnaam'] for u in res.data] if res.data else []
-        
         selected_user = st.sidebar.selectbox("Gebruiker", ["--- Selecteer ---"] + user_list)
         password = st.sidebar.text_input("Wachtwoord", type="password")
-        
         if st.sidebar.button("Login"):
             user_data = next((u for u in res.data if u['gebruikersnaam'] == selected_user), None)
             if user_data and user_data['wachtwoord'] == password:
@@ -109,10 +110,12 @@ if menu == "Cliënt Registratie":
     st.subheader("📅 Beschikbaarheid")
     datum = st.date_input("Kies een datum", min_value=datetime.date.today())
     
-    if datum.weekday() not in [0, 2]: # Maandag en Woensdag
+    # Alleen maandag (0) en woensdag (2)
+    if datum.weekday() not in [0, 2]:
         st.error("⚠️ Afspraken zijn uitsluitend op Maandag en Woensdag.")
         vrije_tijden = []
     else:
+        # Tijden tussen 07:00 en 15:00 in 15 min intervallen
         tijden = [f"{h:02d}:{m:02d}" for h in range(7, 15) for m in [0, 15, 30, 45]]
         slots = [t for t in tijden if "07:00" <= t <= "14:45"]
         res = supabase.table("aanvragen").select("afspraak_tijd").eq("afspraak_datum", str(datum)).execute()
@@ -130,6 +133,7 @@ if menu == "Cliënt Registratie":
 
     if st.button("Verstuur Aanvraag"):
         if all([vnaam, anaam, id_nr, woonadres, tel, email, bericht]) and gekozen_tijd != "--- Maak een keuze ---":
+            # 1. Opslaan in Database
             data = {
                 "voornaam": vnaam, "achternaam": anaam, "id_nummer": id_nr, "woonadres": woonadres, 
                 "telefoon": tel, "email": email, "lad_nummer": lad_nr, "bericht": bericht, 
@@ -137,9 +141,30 @@ if menu == "Cliënt Registratie":
             }
             supabase.table("aanvragen").insert(data).execute()
             
-            bevestiging_tekst = f"Beste {vnaam},\n\nHartelijk dank voor uw aanvraag. Uw voorlopige afspraak staat gepland op {datum} om {gekozen_tijd} uur.\n\nMet vriendelijke groet,\nDienst Grondzaken Wanica"
+            # 2. Mail naar de Cliënt
+            bevestiging_tekst = f"Beste {vnaam},\n\nHartelijk dank voor uw aanvraag bij DGW Wanica. Uw voorlopige afspraak staat gepland op {datum} om {gekozen_tijd} uur.\n\nZodra een medewerker uw aanvraag heeft beoordeeld, ontvangt u een definitieve bevestiging.\n\nMet vriendelijke groet,\nDienst Grondzaken Wanica"
             stuur_mail(email, "Ontvangstbevestiging DGW Wanica", bevestiging_tekst)
-            st.success("✅ Succesvol verzonden!")
+
+            # 3. Mail naar de Medewerker (Inclusief alle gegevens en bijlagen)
+            medewerker_mail = st.secrets["EMAIL_USER"]
+            notificatie_tekst = f"""
+            NIEUWE AANVRAAG ONTVANGEN:
+            
+            Klant: {vnaam} {anaam}
+            ID-Nummer: {id_nr}
+            LAD-Nummer: {lad_nr}
+            Woonadres: {woonadres}
+            Telefoon: {tel}
+            E-mail: {email}
+            
+            Bericht/Klacht:
+            {bericht}
+            
+            Voorgestelde Afspraak: {datum} om {gekozen_tijd} uur.
+            """
+            stuur_mail(medewerker_mail, f"Nieuwe Aanvraag: {vnaam} {anaam}", notificatie_tekst, bestanden=uploaded_files)
+
+            st.success("✅ Uw aanvraag is succesvol verzonden. U en de medewerker hebben een bevestiging ontvangen.")
             st.balloons()
         else:
             st.error("⚠️ Vul a.u.b. alle verplichte velden in.")
@@ -167,9 +192,9 @@ elif menu == "Medewerker Portaal":
 
         if st.button("Update doorvoeren & Mail sturen"):
             supabase.table("aanvragen").update({"status": nieuwe_status, "afspraak_datum": str(n_datum), "afspraak_tijd": n_tijd}).eq("id", selected_id).execute()
-            mail_inhoud = f"Beste {aanvraag['voornaam']},\n\nUw aanvraag is bijgewerkt naar: {nieuwe_status}.\nDatum: {n_datum}\nTijd: {n_tijd} uur.\n\nToelichting: {opmerking}"
+            mail_inhoud = f"Beste {aanvraag['voornaam']},\n\nUw aanvraag bij DGW Wanica is bijgewerkt naar de status: {nieuwe_status}.\n\nNieuwe afspraak details:\nDatum: {n_datum}\nTijd: {n_tijd} uur.\n\nToelichting van medewerker:\n{opmerking}\n\nMet vriendelijke groet,\nDGW Wanica"
             stuur_mail(aanvraag['email'], f"Update DGW Aanvraag: {nieuwe_status}", mail_inhoud)
-            st.success("Bijgewerkt!")
+            st.success("Status bijgewerkt en klant geïnformeerd!")
             st.rerun()
 
 elif menu == "Rapportages":
@@ -191,7 +216,6 @@ elif menu == "Rapportages":
 
         st.write(f"### Statistieken ({filter_type})")
         st.bar_chart(df_rep['status'].value_counts())
-        st.write(f"Totaal aantal registraties in deze periode: {len(df_rep)}")
         
         csv = df_rep.to_csv(index=False).encode('utf-8')
         st.download_button("📥 Download Volledig Rapport (.csv)", data=csv, file_name=f"DGW_Rapport_{filter_type}.csv", mime="text/csv")
@@ -205,7 +229,7 @@ elif menu == "Admin Instellingen":
         n_rol = st.selectbox("Rol", ["Medewerker", "Admin"])
         if st.button("Opslaan"):
             supabase.table("medewerkers").insert({"gebruikersnaam": n_user, "wachtwoord": n_pass, "rol": n_rol}).execute()
-            st.success("Toegevoegd!")
+            st.success("Medewerker succesvol toegevoegd!")
             st.rerun()
     
     st.write("---")
@@ -214,8 +238,8 @@ elif menu == "Admin Instellingen":
         df_m = pd.DataFrame(res_m.data)
         st.table(df_m[['gebruikersnaam', 'rol']])
         with st.expander("🗑️ Medewerker Verwijderen"):
-            to_del = st.selectbox("Selecteer account", df_m['gebruikersnaam'].tolist())
+            to_del = st.selectbox("Selecteer account om te verwijderen", df_m['gebruikersnaam'].tolist())
             if to_del != st.session_state.user and st.button("Verwijderen"):
                 supabase.table("medewerkers").delete().eq("gebruikersnaam", to_del).execute()
-                st.success("Verwijderd!")
+                st.success("Account verwijderd!")
                 st.rerun()
