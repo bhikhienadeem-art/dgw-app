@@ -46,7 +46,7 @@ def stuur_mail(ontvanger, onderwerp, inhoud, bestanden=None):
     except Exception as e:
         st.warning(f"Mailfout: {e}")
 
-# --- 2. LOGIN SYSTEEM (Gekoppeld aan tabel: medewerkers) ---
+# --- 2. LOGIN SYSTEEM (Tabel: medewerkers) ---
 if 'logged_in' not in st.session_state:
     st.session_state.logged_in = False
     st.session_state.role = None
@@ -136,12 +136,32 @@ if menu == "Cliënt Registratie":
                 "afspraak_datum": str(datum), "afspraak_tijd": gekozen_tijd, "status": "In behandeling"
             }
             supabase.table("aanvragen").insert(data).execute()
-            stuur_mail(st.secrets["EMAIL_USER"], f"Nieuwe aanvraag: {vnaam}", f"Nieuwe aanvraag van {vnaam} {anaam}.", uploaded_files)
-            stuur_mail(email, "DGW Ontvangstbevestiging", f"Beste {vnaam}, uw afspraak voor {datum} om {gekozen_tijd}u is ontvangen.")
-            st.success("✅ Succesvol ingediend!")
+            
+            # Vriendelijke bevestigingsmail naar cliënt
+            bevestiging_tekst = f"""
+            Beste {vnaam} {anaam},
+
+            Hartelijk dank voor uw bericht aan Dienst Grondzaken Wanica (DGW). 
+            Wij hebben uw aanvraag in goede orde ontvangen.
+
+            Uw voorlopige afspraakgegevens:
+            Datum: {datum}
+            Tijdstip: {gekozen_tijd} uur
+
+            Onze medewerkers gaan uw verzoek bekijken. U ontvangt spoedig een definitieve bevestiging via e-mail.
+
+            Met vriendelijke groet,
+            Commissariaat Wanica Centrum
+            Dienst Grondzaken
+            """
+            
+            stuur_mail(st.secrets["EMAIL_USER"], f"Nieuwe aanvraag: {vnaam} {anaam}", f"Nieuwe registratie ontvangen van {vnaam} {anaam}.", uploaded_files)
+            stuur_mail(email, "Ontvangstbevestiging DGW Wanica", bevestiging_tekst)
+            
+            st.success("✅ Uw aanvraag is succesvol verzonden. U ontvangt een bevestiging per mail.")
             st.balloons()
         else:
-            st.error("⚠️ Vul alle verplichte velden in.")
+            st.error("⚠️ Vul a.u.b. alle verplichte velden in.")
 
 elif menu == "Medewerker Portaal":
     st.subheader("📋 Beheer Aanvragen")
@@ -151,25 +171,44 @@ elif menu == "Medewerker Portaal":
         st.dataframe(df, use_container_width=True)
         
         st.write("---")
-        st.subheader("⚙️ Actie uitvoeren")
+        st.subheader("⚙️ Status & Afspraak Bijwerken")
         opties = {row['id']: f"ID: {row['id']} | {row['voornaam']} {row['achternaam']}" for index, row in df.iterrows()}
         selected_id = st.selectbox("Selecteer aanvraag", options=list(opties.keys()), format_func=lambda x: opties[x])
         aanvraag = next(item for item in res.data if item["id"] == selected_id)
         
         col1, col2 = st.columns(2)
         with col1:
-            nieuwe_status = st.selectbox("Status", ["In behandeling", "Bevestigd", "Geannuleerd", "Verwezen"])
+            nieuwe_status = st.selectbox("Nieuwe Status", ["In behandeling", "Bevestigd", "Geannuleerd", "Verwezen"])
             n_datum = st.date_input("Datum aanpassen", value=datetime.datetime.strptime(aanvraag['afspraak_datum'], '%Y-%m-%d').date())
         with col2:
-            n_tijd = st.text_input("Tijd aanpassen", value=aanvraag['afspraak_tijd'])
-            opmerking = st.text_area("Toelichting voor klant")
+            n_tijd = st.text_input("Tijdstip aanpassen", value=aanvraag['afspraak_tijd'])
+            opmerking = st.text_area("Toelichting voor de cliënt", help="Deze tekst wordt direct in de mail geplaatst.")
 
-        if st.button("Update & Mail Klant"):
+        if st.button("Update doorvoeren & Mail sturen"):
             supabase.table("aanvragen").update({"status": nieuwe_status, "afspraak_datum": str(n_datum), "afspraak_tijd": n_tijd}).eq("id", selected_id).execute()
             
-            mail_inhoud = f"Beste {aanvraag['voornaam']},\n\nUw aanvraag is bijgewerkt naar: {nieuwe_status}.\nDatum: {n_datum}\nTijd: {n_tijd}u\n\nToelichting: {opmerking}"
-            stuur_mail(aanvraag['email'], f"Update DGW Aanvraag: {nieuwe_status}", mail_inhoud)
-            st.success("Bijgewerkt!")
+            # Professionele status-mail
+            status_mail = f"""
+            Beste {aanvraag['voornaam']} {aanvraag['achternaam']},
+
+            Hierbij informeren wij u over de actuele status van uw aanvraag bij Dienst Grondzaken Wanica.
+
+            Status: {nieuwe_status}
+            Datum: {n_datum}
+            Tijdstip: {n_tijd} uur
+
+            Toelichting van de balie:
+            {opmerking if opmerking else "Er zijn geen extra opmerkingen bijgevoegd."}
+
+            Mocht u nog vragen hebben, dan kunt u reageren op deze e-mail of langskomen op het kantoor.
+
+            Met vriendelijke groet,
+            Commissariaat Wanica Centrum
+            Dienst Grondzaken
+            """
+            
+            stuur_mail(aanvraag['email'], f"Update betreffende uw aanvraag: {nieuwe_status}", status_mail)
+            st.success(f"Status voor {aanvraag['voornaam']} bijgewerkt naar '{nieuwe_status}' en mail verzonden.")
             st.rerun()
 
 elif menu == "Rapportages":
@@ -188,20 +227,21 @@ elif menu == "Admin Instellingen":
         n_rol = st.selectbox("Rol", ["Medewerker", "Admin"])
         if st.button("Opslaan"):
             supabase.table("medewerkers").insert({"gebruikersnaam": n_user, "wachtwoord": n_pass, "rol": n_rol}).execute()
-            st.success("Toegevoegd!")
+            st.success("Medewerker succesvol toegevoegd!")
             st.rerun()
 
     st.write("---")
     res = supabase.table("medewerkers").select("*").execute()
     if res.data:
         df_m = pd.DataFrame(res.data)
+        st.write("### Actieve Accounts")
         st.table(df_m[['gebruikersnaam', 'rol']])
         with st.expander("🗑️ Medewerker Verwijderen"):
-            to_del = st.selectbox("Selecteer te verwijderen account", df_m['gebruikersnaam'].tolist())
+            to_del = st.selectbox("Selecteer account om te verwijderen", df_m['gebruikersnaam'].tolist())
             if to_del != st.session_state.user:
-                if st.button("Definitief Verwijderen"):
+                if st.button("Verwijder Account Definitief"):
                     supabase.table("medewerkers").delete().eq("gebruikersnaam", to_del).execute()
-                    st.success("Verwijderd!")
+                    st.success(f"Account '{to_del}' is verwijderd.")
                     st.rerun()
             else:
-                st.warning("Je kunt jezelf niet verwijderen.")
+                st.warning("U kunt uw eigen actieve sessie niet verwijderen.")
