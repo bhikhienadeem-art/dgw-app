@@ -29,12 +29,12 @@ try:
     KEY = st.secrets["SUPABASE_KEY"]
     supabase: Client = create_client(URL, KEY)
 except Exception:
-    st.error("Systeemfout: Databaseverbinding mislukt!")
+    st.error("Systeemfout: Controleer uw Database Secrets!")
     st.stop()
 
 # --- 3. LOGICA VOOR BESCHIKBAARHEID ---
 def get_tijd_status(datum):
-    # Tijden van 07:30 tot 14:00 met 15 min interval
+    # Genereer tijden: 07:30 tot 14:00 (15 min interval)
     start = datetime.datetime.strptime("07:30", "%H:%M")
     eind = datetime.datetime.strptime("14:00", "%H:%M")
     alle_tijden = []
@@ -42,7 +42,8 @@ def get_tijd_status(datum):
         alle_tijden.append(start.strftime("%H:%M"))
         start += datetime.timedelta(minutes=15)
     
-    res = supabase.table("aanvagen").select("afspraak_tijd").eq("afspraak_datum", str(datum)).execute()
+    # CORRECTIE: Tabelnaam moet 'aanvragen' zijn (was 'aanvagen')
+    res = supabase.table("aanvragen").select("afspraak_tijd").eq("afspraak_datum", str(datum)).execute()
     bezette_tijden = [r['afspraak_tijd'] for r in res.data] if res.data else []
     return alle_tijden, bezette_tijden
 
@@ -59,7 +60,7 @@ if menu == "Cliënt Registratie":
         vnaam = st.text_input("Voornaam *")
         anaam = st.text_input("Achternaam *")
         id_nr = st.text_input("ID-Nummer *")
-        woonadres = st.text_input("Woonadres *") # Woonadres hersteld
+        woonadres = st.text_input("Woonadres *") # Woonadres
     with col2:
         tel = st.text_input("Telefoonnummer *")
         email = st.text_input("E-mailadres")
@@ -69,16 +70,16 @@ if menu == "Cliënt Registratie":
 
     st.write("---")
     st.subheader("📁 Documenten Uploaden")
-    st.info("Upload relevante documenten zoals uw ID-kaart of grondpapieren (PDF, JPG, PNG).")
-    uploaded_files = st.file_uploader("Kies bestanden om te uploaden", accept_multiple_files=True) # Document upload
+    st.info("Upload uw ID-kaart, grondpapieren of andere bewijsstukken.")
+    uploaded_files = st.file_uploader("Documenten (PDF, JPG, PNG)", accept_multiple_files=True) # Upload
 
     st.write("---")
     st.subheader("📅 Plan uw afspraak")
-    datum = st.date_input("Selecteer een datum", min_value=datetime.date.today())
+    datum = st.date_input("Kies een datum", min_value=datetime.date.today())
 
-    # Controle op Maandag (0) of Woensdag (2)
+    # Alleen Maandag (0) en Woensdag (2)
     if datum.weekday() not in [0, 2]:
-        st.error("U kunt alleen een datum kiezen op Maandag of Woensdag.")
+        st.error("U kunt alleen een afspraak maken op Maandag of Woensdag.")
     else:
         alle_tijden, bezette_tijden = get_tijd_status(datum)
         
@@ -95,9 +96,9 @@ if menu == "Cliënt Registratie":
         vrije_opties = [t for t in alle_tijden if t not in bezette_tijden]
         
         if vrije_opties:
-            geselecteerde_tijd = st.selectbox("Kies uw tijdstip *", vrije_opties)
+            geselecteerde_tijd = st.selectbox("Selecteer uw tijdstip *", vrije_opties)
             
-            if st.button("Aanvraag indienen"): # Knoptekst aangepast
+            if st.button("Aanvraag indienen"): # Knoptekst
                 if vnaam and anaam and id_nr and woonadres and bericht:
                     data = {
                         "voornaam": vnaam, "achternaam": anaam, "id_nummer": id_nr,
@@ -106,15 +107,15 @@ if menu == "Cliënt Registratie":
                         "afspraak_tijd": geselecteerde_tijd, "status": "In behandeling"
                     }
                     supabase.table("aanvragen").insert(data).execute()
-                    st.success(f"✅ Uw aanvraag voor {datum} om {geselecteerde_tijd}u is ingediend!")
+                    st.success(f"✅ Uw aanvraag voor {datum} om {geselecteerde_tijd}u is succesvol ingediend!")
                 else:
-                    st.warning("Vul a.u.b. alle velden met een * in.")
+                    st.warning("Vul alle verplichte velden (*) in.")
         else:
-            st.error("Geen beschikbare tijden meer op deze dag.")
+            st.error("Deze dag is helaas volgeboekt.")
 
 elif menu == "Medewerker Portaal":
-    st.subheader("Dossierbeheer")
+    st.subheader("Overzicht & Dossierbeheer")
     res = supabase.table("aanvragen").select("*").execute()
     if res.data:
         df = pd.DataFrame(res.data)
-        st.dataframe(df) # Baliemedewerkers kunnen hier gegevens inzien en corrigeren
+        st.dataframe(df) # Mogelijkheid tot correctie van DC-nummers
