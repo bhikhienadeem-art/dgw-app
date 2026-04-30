@@ -10,6 +10,13 @@ from email.mime.application import MIMEApplication
 # --- 1. CONFIGURATIE & STYLING ---
 st.set_page_config(page_title="DGW Wanica Portaal", layout="wide")
 
+# Logo toevoegen in de sidebar (gebaseerd op jouw upload)
+try:
+    st.sidebar.image("orgineel logo Centrum.png", use_container_width=True)
+except:
+    st.sidebar.warning("Logo bestand (orgineel logo Centrum.png) niet gevonden.")
+
+# Groen/wit interface styling
 st.markdown("""
     <style>
     .tijd-knop { display: inline-block; padding: 10px; margin: 5px; border-radius: 5px; text-align: center; font-weight: bold; width: 85px; }
@@ -37,11 +44,11 @@ def stuur_mail(ontvanger, onderwerp, inhoud, bestanden=None):
         
         if bestanden:
             for f in bestanden:
-                f.seek(0)  # Zorg dat we het bestand vanaf het begin lezen
+                f.seek(0)
                 bijlage = MIMEApplication(f.read(), Name=f.name)
                 bijlage['Content-Disposition'] = f'attachment; filename="{f.name}"'
                 msg.attach(bijlage)
-                f.seek(0) # Reset voor de volgende ontvanger
+                f.seek(0)
 
         with smtplib.SMTP_SSL('smtp.gmail.com', 465) as server:
             server.login(st.secrets["EMAIL_USER"], st.secrets["EMAIL_PASS"])
@@ -110,12 +117,12 @@ if menu == "Cliënt Registratie":
     st.subheader("📅 Beschikbaarheid")
     datum = st.date_input("Kies een datum", min_value=datetime.date.today())
     
-    # Alleen maandag (0) en woensdag (2)
+    # Alleen maandag en woensdag
     if datum.weekday() not in [0, 2]:
         st.error("⚠️ Afspraken zijn uitsluitend op Maandag en Woensdag.")
         vrije_tijden = []
     else:
-        # Tijden tussen 07:00 en 15:00 in 15 min intervallen
+        # Tijden tussen 07:00 en 15:00
         tijden = [f"{h:02d}:{m:02d}" for h in range(7, 15) for m in [0, 15, 30, 45]]
         slots = [t for t in tijden if "07:00" <= t <= "14:45"]
         res = supabase.table("aanvragen").select("afspraak_tijd").eq("afspraak_datum", str(datum)).execute()
@@ -133,7 +140,7 @@ if menu == "Cliënt Registratie":
 
     if st.button("Verstuur Aanvraag"):
         if all([vnaam, anaam, id_nr, woonadres, tel, email, bericht]) and gekozen_tijd != "--- Maak een keuze ---":
-            # 1. Opslaan in Database
+            # Opslaan in Database
             data = {
                 "voornaam": vnaam, "achternaam": anaam, "id_nummer": id_nr, "woonadres": woonadres, 
                 "telefoon": tel, "email": email, "lad_nummer": lad_nr, "bericht": bericht, 
@@ -141,30 +148,16 @@ if menu == "Cliënt Registratie":
             }
             supabase.table("aanvragen").insert(data).execute()
             
-            # 2. Mail naar de Cliënt
-            bevestiging_tekst = f"Beste {vnaam},\n\nHartelijk dank voor uw aanvraag bij DGW Wanica. Uw voorlopige afspraak staat gepland op {datum} om {gekozen_tijd} uur.\n\nZodra een medewerker uw aanvraag heeft beoordeeld, ontvangt u een definitieve bevestiging.\n\nMet vriendelijke groet,\nDienst Grondzaken Wanica"
+            # Mail naar de Cliënt
+            bevestiging_tekst = f"Beste {vnaam},\n\nHartelijk dank voor uw aanvraag bij DGW Wanica Centrum. Uw voorlopige afspraak staat gepland op {datum} om {gekozen_tijd} uur.\n\nMet vriendelijke groet,\nDienst Grondzaken Wanica"
             stuur_mail(email, "Ontvangstbevestiging DGW Wanica", bevestiging_tekst)
 
-            # 3. Mail naar de Medewerker (Inclusief alle gegevens en bijlagen)
+            # Mail naar de Medewerker inclusief bijlagen
             medewerker_mail = st.secrets["EMAIL_USER"]
-            notificatie_tekst = f"""
-            NIEUWE AANVRAAG ONTVANGEN:
-            
-            Klant: {vnaam} {anaam}
-            ID-Nummer: {id_nr}
-            LAD-Nummer: {lad_nr}
-            Woonadres: {woonadres}
-            Telefoon: {tel}
-            E-mail: {email}
-            
-            Bericht/Klacht:
-            {bericht}
-            
-            Voorgestelde Afspraak: {datum} om {gekozen_tijd} uur.
-            """
+            notificatie_tekst = f"NIEUWE AANVRAAG:\n\nKlant: {vnaam} {anaam}\nID: {id_nr}\nLAD: {lad_nr}\nAdres: {woonadres}\nTel: {tel}\nEmail: {email}\n\nBericht:\n{bericht}\n\nVoorgestelde Afspraak: {datum} om {gekozen_tijd} uur."
             stuur_mail(medewerker_mail, f"Nieuwe Aanvraag: {vnaam} {anaam}", notificatie_tekst, bestanden=uploaded_files)
 
-            st.success("✅ Uw aanvraag is succesvol verzonden. U en de medewerker hebben een bevestiging ontvangen.")
+            st.success("✅ Uw aanvraag is succesvol verzonden!")
             st.balloons()
         else:
             st.error("⚠️ Vul a.u.b. alle verplichte velden in.")
@@ -192,9 +185,9 @@ elif menu == "Medewerker Portaal":
 
         if st.button("Update doorvoeren & Mail sturen"):
             supabase.table("aanvragen").update({"status": nieuwe_status, "afspraak_datum": str(n_datum), "afspraak_tijd": n_tijd}).eq("id", selected_id).execute()
-            mail_inhoud = f"Beste {aanvraag['voornaam']},\n\nUw aanvraag bij DGW Wanica is bijgewerkt naar de status: {nieuwe_status}.\n\nNieuwe afspraak details:\nDatum: {n_datum}\nTijd: {n_tijd} uur.\n\nToelichting van medewerker:\n{opmerking}\n\nMet vriendelijke groet,\nDGW Wanica"
+            mail_inhoud = f"Beste {aanvraag['voornaam']},\n\nUw aanvraag bij DGW Wanica is bijgewerkt naar de status: {nieuwe_status}.\n\nNieuwe details:\nDatum: {n_datum}\nTijd: {n_tijd} uur.\n\nToelichting:\n{opmerking}"
             stuur_mail(aanvraag['email'], f"Update DGW Aanvraag: {nieuwe_status}", mail_inhoud)
-            st.success("Status bijgewerkt en klant geïnformeerd!")
+            st.success("Status bijgewerkt!")
             st.rerun()
 
 elif menu == "Rapportages":
@@ -203,23 +196,12 @@ elif menu == "Rapportages":
     if res.data:
         df = pd.DataFrame(res.data)
         df['created_at'] = pd.to_datetime(df['created_at'])
-        
         filter_type = st.selectbox("Filter Rapportage", ["Totaal Overzicht", "Wekelijks", "Maandelijks"])
-        vandaag = datetime.datetime.now(datetime.timezone.utc)
         
-        if filter_type == "Wekelijks":
-            df_rep = df[df['created_at'] >= (vandaag - datetime.timedelta(days=7))]
-        elif filter_type == "Maandelijks":
-            df_rep = df[df['created_at'] >= (vandaag - datetime.timedelta(days=30))]
-        else:
-            df_rep = df
-
-        st.write(f"### Statistieken ({filter_type})")
-        st.bar_chart(df_rep['status'].value_counts())
-        
-        csv = df_rep.to_csv(index=False).encode('utf-8')
-        st.download_button("📥 Download Volledig Rapport (.csv)", data=csv, file_name=f"DGW_Rapport_{filter_type}.csv", mime="text/csv")
-        st.dataframe(df_rep)
+        # Download optie
+        csv = df.to_csv(index=False).encode('utf-8')
+        st.download_button("📥 Download Rapport (.csv)", data=csv, file_name=f"DGW_Rapport_{filter_type}.csv", mime="text/csv")
+        st.dataframe(df)
 
 elif menu == "Admin Instellingen":
     st.subheader("⚙️ Gebruikersbeheer")
@@ -229,16 +211,15 @@ elif menu == "Admin Instellingen":
         n_rol = st.selectbox("Rol", ["Medewerker", "Admin"])
         if st.button("Opslaan"):
             supabase.table("medewerkers").insert({"gebruikersnaam": n_user, "wachtwoord": n_pass, "rol": n_rol}).execute()
-            st.success("Medewerker succesvol toegevoegd!")
+            st.success("Medewerker toegevoegd!")
             st.rerun()
     
-    st.write("---")
     res_m = supabase.table("medewerkers").select("*").execute()
     if res_m.data:
         df_m = pd.DataFrame(res_m.data)
         st.table(df_m[['gebruikersnaam', 'rol']])
         with st.expander("🗑️ Medewerker Verwijderen"):
-            to_del = st.selectbox("Selecteer account om te verwijderen", df_m['gebruikersnaam'].tolist())
+            to_del = st.selectbox("Selecteer account", df_m['gebruikersnaam'].tolist())
             if to_del != st.session_state.user and st.button("Verwijderen"):
                 supabase.table("medewerkers").delete().eq("gebruikersnaam", to_del).execute()
                 st.success("Account verwijderd!")
