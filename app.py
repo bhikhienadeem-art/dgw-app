@@ -19,7 +19,7 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# Verbinding
+# Verbinding met Supabase
 try:
     supabase = create_client(st.secrets["SUPABASE_URL"], st.secrets["SUPABASE_KEY"])
 except:
@@ -52,18 +52,19 @@ menu = st.sidebar.radio("Navigatie", ["Cliënt Registratie", "Medewerker Portaal
 if menu == "Cliënt Registratie":
     st.subheader("Nieuwe Aanvraag")
     
+    # We gebruiken 'key' om de waarden direct in de session_state op te slaan
     col1, col2 = st.columns(2)
     with col1:
-        vnaam = st.text_input("Voornaam *")
-        anaam = st.text_input("Achternaam *")
-        id_nr = st.text_input("ID-Nummer *")
-        woonadres = st.text_input("Woonadres *")
+        vnaam = st.text_input("Voornaam *", key="vnaam_input")
+        anaam = st.text_input("Achternaam *", key="anaam_input")
+        id_nr = st.text_input("ID-Nummer *", key="id_input")
+        woonadres = st.text_input("Woonadres *", key="adres_input")
     with col2:
-        tel = st.text_input("Telefoonnummer *")
-        email = st.text_input("E-mailadres *")
-        lad_nr = st.text_input("LAD Nummer (optioneel)")
+        tel = st.text_input("Telefoonnummer *", key="tel_input")
+        email = st.text_input("E-mailadres *", key="email_input")
+        lad_nr = st.text_input("LAD Nummer (optioneel)", key="lad_input")
     
-    bericht = st.text_area("Omschrijving klacht/verzoek *")
+    bericht = st.text_area("Omschrijving klacht/verzoek *", key="bericht_input")
     uploaded_files = st.file_uploader("Documenten Uploaden", accept_multiple_files=True)
 
     st.write("---")
@@ -73,19 +74,16 @@ if menu == "Cliënt Registratie":
     
     vrije_tijden = []
     
-    # Directe controle op Maandag (0) of Woensdag (2)
+    # Afspraken alleen op Maandag en Woensdag
     if datum.weekday() not in [0, 2]:
         st.error("⚠️ Afspraken zijn uitsluitend op Maandag en Woensdag.")
     else:
-        # Tijd slots
         tijden = [f"{h:02d}:{m:02d}" for h in range(7, 15) for m in [0, 15, 30, 45]]
         slots = [t for t in tijden if "07:30" <= t <= "14:00"]
         
-        # Haal bezette tijden op
         res = supabase.table("aanvragen").select("afspraak_tijd").eq("afspraak_datum", str(datum)).execute()
         bezet = [r['afspraak_tijd'] for r in res.data] if res.data else []
         
-        # Toon rood/groen status
         st.write("Groen = Vrij | Rood = Bezet")
         cols = st.columns(6)
         for i, t in enumerate(slots):
@@ -99,10 +97,9 @@ if menu == "Cliënt Registratie":
     gekozen_tijd = st.selectbox("Selecteer uw tijdstip *", ["--- Kies een tijd ---"] + vrije_tijden)
 
     if st.button("Verstuur Aanvraag"):
-        # Validatie
-        check = [vnaam, anaam, id_nr, woonadres, tel, email, bericht]
-        if all(check) and gekozen_tijd != "--- Kies een tijd ---":
-            # Opslaan
+        # We controleren de variabelen direct
+        if all([vnaam, anaam, id_nr, woonadres, tel, email, bericht]) and gekozen_tijd != "--- Kies een tijd ---":
+            # Opslaan in database
             data = {
                 "voornaam": vnaam, "achternaam": anaam, "id_nummer": id_nr,
                 "woonadres": woonadres, "telefoon": tel, "email": email, 
@@ -111,7 +108,7 @@ if menu == "Cliënt Registratie":
             }
             supabase.table("aanvragen").insert(data).execute()
             
-            # E-mails versturen
+            # E-mails
             mail_m = f"Nieuwe aanvraag:\nNaam: {vnaam} {anaam}\nAdres: {woonadres}\nTel: {tel}\nAfspraak: {datum} om {gekozen_tijd}u"
             stuur_mail(st.secrets["EMAIL_USER"], f"DGW Aanvraag: {vnaam}", mail_m, uploaded_files)
             stuur_mail(email, "DGW Ontvangstbevestiging", f"Beste {vnaam}, uw afspraak voor {datum} om {gekozen_tijd}u is ontvangen.")
