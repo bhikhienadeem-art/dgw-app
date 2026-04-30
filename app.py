@@ -4,6 +4,7 @@ import datetime
 import pandas as pd
 
 # --- 1. CONFIGURATIE & THEMA ---
+# Gebruik van het gewenste groen/wit kleurenschema
 st.set_page_config(page_title="DGW Wanica Portaal", page_icon="📝", layout="wide")
 
 st.markdown("""
@@ -22,13 +23,14 @@ st.markdown("""
 try:
     URL = st.secrets["SUPABASE_URL"]
     KEY = st.secrets["SUPABASE_KEY"]
-    supabase: Client = create_client(URL, KEY)
+    supabase: Client = create_client(URL, KEY) # Koppeling met Supabase
 except Exception:
     st.error("Systeemfout: Databaseverbinding mislukt!")
     st.stop()
 
 # --- 3. HELPER FUNCTIES ---
 def get_beschikbare_tijden(datum):
+    # Afspraken uitsluitend tussen 07:00u en 15:00u met 15-minuten intervallen
     start = datetime.datetime.strptime("07:00", "%H:%M")
     eind = datetime.datetime.strptime("15:00", "%H:%M")
     tijden = []
@@ -68,26 +70,28 @@ if keuze == "Cliënt Registratie":
             tel = st.text_input("Telefoonnummer *")
         with col2:
             email = st.text_input("E-mailadres *")
-            lad_nr = st.text_input("LAD Nummer")
+            lad_nr = st.text_input("LAD Nummer") # LAD nummer veld
             woonadres = st.text_input("Woonadres *")
         
         bericht = st.text_area("Omschrijving van uw verzoek of klacht *")
         
         st.write("---")
         st.subheader("📄 Documenten")
+        # Document upload hersteld
         geuploade_file = st.file_uploader("Upload relevante documenten (PDF/JPG/PNG)", type=['pdf', 'png', 'jpg', 'jpeg'])
         
         st.write("---")
         st.subheader("📅 Plan uw afspraak")
         datum = st.date_input("Kies een datum", min_value=datetime.date.today())
         
-        # --- DE FIX ---
-        # isoweekday() geeft 1 voor maandag en 3 voor woensdag. Dit is universeel.
+        # --- DE DEFINITIEVE FIX ---
+        # isoweekday() geeft 1 voor maandag en 3 voor woensdag. 
+        # Dit voorkomt de fout die op image_f266f6.png te zien is.
         iso_dag = datum.isoweekday() 
         dag_namen = {1: "Maandag", 2: "Dinsdag", 3: "Woensdag", 4: "Donderdag", 5: "Vrijdag", 6: "Zaterdag", 7: "Zondag"}
         huidige_dagnaam = dag_namen.get(iso_dag)
 
-        if iso_dag not in [1, 3]:
+        if iso_dag not in [1, 3]: # Beperking tot Maandag (1) en Woensdag (3)
             st.error(f"❌ {huidige_dagnaam} is niet beschikbaar. Kies a.u.b. een Maandag of Woensdag.")
             submit = st.form_submit_button("Dag niet beschikbaar", disabled=True)
         else:
@@ -123,6 +127,7 @@ elif keuze == "Medewerker Portaal":
         u = st.text_input("Gebruikersnaam").strip()
         p = st.text_input("Wachtwoord", type="password").strip()
         if st.button("Inloggen"):
+            # Gebruikersbeheer met rollen (Admin vs Medewerker)
             if u == "ICT Wanica" and p == "l3lyd@rp":
                 st.session_state.update({"logged_in": True, "user_rol": "Admin"})
                 st.rerun()
@@ -148,7 +153,7 @@ elif keuze == "Medewerker Portaal":
                     
                     c1, c2 = st.columns(2)
                     with c1:
-                        # Balie medewerkers kunnen DC nummers invoeren en wijzigen bij fouten
+                        # Baliemedewerkers kunnen DC-nummers invoeren en corrigeren bij fouten
                         new_dc = st.text_input("DC Nummer", value=str(row.get('dc_nummer', '')))
                         opts = ["In behandeling", "Bevestigd", "Verschoven", "Afgehandeld", "Afgewezen"]
                         new_s = st.selectbox("Status", opts, index=opts.index(row['status']) if row['status'] in opts else 0)
