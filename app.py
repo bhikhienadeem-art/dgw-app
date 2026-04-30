@@ -10,6 +10,7 @@ from email.mime.application import MIMEApplication
 # --- 1. CONFIGURATIE & STYLING ---
 st.set_page_config(page_title="DGW Wanica Portaal", layout="wide")
 
+# Jouw specifieke groen/wit styling behouden
 st.markdown("""
     <style>
     .tijd-knop { display: inline-block; padding: 10px; margin: 5px; border-radius: 5px; text-align: center; font-weight: bold; width: 85px; }
@@ -19,11 +20,11 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# Verbinding met Supabase
+# Verbinding met de database
 try:
     supabase = create_client(st.secrets["SUPABASE_URL"], st.secrets["SUPABASE_KEY"])
 except:
-    st.error("Configuratie fout in Secrets.")
+    st.error("Database configuratie fout.")
     st.stop()
 
 def stuur_mail(ontvanger, onderwerp, inhoud, bestanden=None):
@@ -52,19 +53,19 @@ menu = st.sidebar.radio("Navigatie", ["Cliënt Registratie", "Medewerker Portaal
 if menu == "Cliënt Registratie":
     st.subheader("Nieuwe Aanvraag")
     
-    # We gebruiken 'key' om de waarden direct in de session_state op te slaan
+    # Gebruik van 'key' dwingt Streamlit om de waarden te onthouden
     col1, col2 = st.columns(2)
     with col1:
-        vnaam = st.text_input("Voornaam *", key="vnaam_input")
-        anaam = st.text_input("Achternaam *", key="anaam_input")
-        id_nr = st.text_input("ID-Nummer *", key="id_input")
-        woonadres = st.text_input("Woonadres *", key="adres_input")
+        vnaam = st.text_input("Voornaam *", key="vnaam")
+        anaam = st.text_input("Achternaam *", key="anaam")
+        id_nr = st.text_input("ID-Nummer *", key="id_nr")
+        woonadres = st.text_input("Woonadres *", key="adres")
     with col2:
-        tel = st.text_input("Telefoonnummer *", key="tel_input")
-        email = st.text_input("E-mailadres *", key="email_input")
-        lad_nr = st.text_input("LAD Nummer (optioneel)", key="lad_input")
+        tel = st.text_input("Telefoonnummer *", key="tel")
+        email = st.text_input("E-mailadres *", key="email")
+        lad_nr = st.text_input("LAD Nummer (optioneel)", key="lad")
     
-    bericht = st.text_area("Omschrijving klacht/verzoek *", key="bericht_input")
+    bericht = st.text_area("Omschrijving klacht/verzoek *", key="msg")
     uploaded_files = st.file_uploader("Documenten Uploaden", accept_multiple_files=True)
 
     st.write("---")
@@ -74,13 +75,15 @@ if menu == "Cliënt Registratie":
     
     vrije_tijden = []
     
-    # Afspraken alleen op Maandag en Woensdag
+    # Alleen Maandag en Woensdag (0 en 2)
     if datum.weekday() not in [0, 2]:
         st.error("⚠️ Afspraken zijn uitsluitend op Maandag en Woensdag.")
     else:
+        # Tijd slots van 07:30 tot 14:00
         tijden = [f"{h:02d}:{m:02d}" for h in range(7, 15) for m in [0, 15, 30, 45]]
         slots = [t for t in tijden if "07:30" <= t <= "14:00"]
         
+        # Bezette tijden ophalen
         res = supabase.table("aanvragen").select("afspraak_tijd").eq("afspraak_datum", str(datum)).execute()
         bezet = [r['afspraak_tijd'] for r in res.data] if res.data else []
         
@@ -94,29 +97,39 @@ if menu == "Cliënt Registratie":
         vrije_tijden = [t for t in slots if t not in bezet]
 
     st.write("---")
-    gekozen_tijd = st.selectbox("Selecteer uw tijdstip *", ["--- Kies een tijd ---"] + vrije_tijden)
+    gekozen_tijd = st.selectbox("Selecteer uw tijdstip *", ["--- Maak een keuze ---"] + vrije_tijden, key="gekozen_tijd")
 
     if st.button("Verstuur Aanvraag"):
-        # We controleren de variabelen direct
-        if all([vnaam, anaam, id_nr, woonadres, tel, email, bericht]) and gekozen_tijd != "--- Kies een tijd ---":
-            # Opslaan in database
+        # We controleren de ingevulde waarden direct uit de session_state
+        s = st.session_state
+        verplicht = [s.vnaam, s.anaam, s.id_nr, s.adres, s.tel, s.email, s.msg]
+        
+        if all(verplicht) and s.gekozen_tijd != "--- Maak een keuze ---":
+            # Opslaan in de database
             data = {
-                "voornaam": vnaam, "achternaam": anaam, "id_nummer": id_nr,
-                "woonadres": woonadres, "telefoon": tel, "email": email, 
-                "lad_nummer": lad_nr, "bericht": bericht, "afspraak_datum": str(datum),
-                "afspraak_tijd": gekozen_tijd, "status": "In behandeling"
+                "voornaam": s.vnaam, "achternaam": s.anaam, "id_nummer": s.id_nr,
+                "woonadres": s.adres, "telefoon": s.tel, "email": s.email, 
+                "lad_nummer": s.lad, "bericht": s.msg, "afspraak_datum": str(datum),
+                "afspraak_tijd": s.gekozen_tijd, "status": "In behandeling"
             }
             supabase.table("aanvragen").insert(data).execute()
             
-            # E-mails
-            mail_m = f"Nieuwe aanvraag:\nNaam: {vnaam} {anaam}\nAdres: {woonadres}\nTel: {tel}\nAfspraak: {datum} om {gekozen_tijd}u"
-            stuur_mail(st.secrets["EMAIL_USER"], f"DGW Aanvraag: {vnaam}", mail_m, uploaded_files)
-            stuur_mail(email, "DGW Ontvangstbevestiging", f"Beste {vnaam}, uw afspraak voor {datum} om {gekozen_tijd}u is ontvangen.")
+            # E-mails naar medewerker en cliënt
+            mail_body = f"Nieuwe aanvraag:\nNaam: {s.vnaam} {s.anaam}\nAdres: {s.adres}\nTel: {s.tel}\nDatum: {datum} om {s.gekozen_tijd}u"
+            stuur_mail(st.secrets["EMAIL_USER"], f"DGW Aanvraag: {s.vnaam}", mail_body, uploaded_files)
+            stuur_mail(s.email, "DGW Ontvangstbevestiging", f"Beste {s.vnaam}, uw afspraak voor {datum} om {s.gekozen_tijd}u is ontvangen.")
             
             st.success("✅ Uw aanvraag is succesvol ingediend!")
             st.balloons()
         else:
-            st.error("⚠️ Vul a.u.b. alle velden met een sterretje (*) in en kies een tijdstip.")
+            # We tonen nu exact welk veld de app als 'leeg' ziet voor betere controle
+            missende_velden = []
+            if not s.vnaam: missende_velden.append("Voornaam")
+            if not s.anaam: missende_velden.append("Achternaam")
+            if not s.email: missende_velden.append("E-mailadres")
+            if s.gekozen_tijd == "--- Maak een keuze ---": missende_velden.append("Tijdstip")
+            
+            st.error(f"⚠️ Er ontbreekt nog informatie: {', '.join(missende_velden)}.")
 
 elif menu == "Medewerker Portaal":
     st.subheader("Overzicht Registraties")
