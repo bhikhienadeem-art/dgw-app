@@ -4,7 +4,6 @@ import datetime
 import pandas as pd
 
 # --- 1. CONFIGURATIE & THEMA ---
-# Professionele layout met groen/wit kleurenschema
 st.set_page_config(page_title="DGW Wanica Portaal", page_icon="📝", layout="wide")
 
 st.markdown("""
@@ -12,11 +11,17 @@ st.markdown("""
     .stButton>button { background-color: #2e7d32; color: white; border-radius: 5px; width: 100%; }
     .stTextInput>div>div>input { border-color: #2e7d32; }
     .main { background-color: #ffffff; }
+    .highlight-box { 
+        padding: 15px; 
+        border-radius: 10px; 
+        border: 2px solid #2e7d32; 
+        background-color: #f1f8e9; 
+        margin-bottom: 20px; 
+    }
     </style>
     """, unsafe_allow_html=True)
 
 # --- 2. DATABASE VERBINDING ---
-# Gebruik van Supabase voor dataopslag
 try:
     URL = st.secrets["SUPABASE_URL"]
     KEY = st.secrets["SUPABASE_KEY"]
@@ -27,7 +32,7 @@ except Exception:
 
 # --- 3. HELPER FUNCTIES ---
 def get_beschikbare_tijden(datum):
-    # Afspraken tussen 07:00 en 15:00 met 15 min interval
+    # Tijden tussen 07:00 en 15:00 met 15 min interval
     start = datetime.datetime.strptime("07:00", "%H:%M")
     eind = datetime.datetime.strptime("15:00", "%H:%M")
     tijden = []
@@ -50,6 +55,18 @@ keuze = st.sidebar.radio("Navigatie:", ["Cliënt Registratie", "Medewerker Porta
 # --- 5. CLIËNT REGISTRATIE ---
 if keuze == "Cliënt Registratie":
     st.title("📝 Registratie Dienst Grondzaken Wanica")
+    
+    st.markdown("""
+        <div class="highlight-box">
+            <h3 style='color: #2e7d32; margin-top: 0;'>📅 Belangrijke Informatie</h3>
+            <p>Afspraken kunnen <b>uitsluitend</b> worden ingepland op:</p>
+            <ul>
+                <li><b>Maandag</b> (07:00u - 15:00u)</li>
+                <li><b>Woensdag</b> (07:00u - 15:00u)</li>
+            </ul>
+        </div>
+    """, unsafe_allow_html=True)
+    
     with st.form("registratie_form", clear_on_submit=True):
         col1, col2 = st.columns(2)
         with col1:
@@ -64,23 +81,31 @@ if keuze == "Cliënt Registratie":
         
         bericht = st.text_area("Omschrijving van uw verzoek of klacht *")
         
-        # Alleen Maandag (0) en Woensdag (2)
+        st.write("---")
+        st.subheader("📅 Plan uw afspraak")
         datum = st.date_input("Kies een datum", min_value=datetime.date.today())
-        alle_tijden, bezet = get_beschikbare_tijden(datum)
-        tijd = st.selectbox("Kies een tijdstip", alle_tijden)
         
-        if tijd in bezet:
-            st.error(f"🔴 {tijd} is al bezet.")
+        # Strikte controle op Maandag (0) en Woensdag (2)
+        if datum.weekday() not in [0, 2]:
+            st.error(f"❌ De gekozen datum ({datum.strftime('%A')}) is niet beschikbaar. Kies een Maandag of Woensdag.")
+            submit = st.form_submit_button("Dag niet beschikbaar", disabled=True)
         else:
-            st.success(f"🟢 {tijd} is beschikbaar.")
-
-        submit = st.form_submit_button("Aanvraag Indienen")
+            alle_tijden, bezette_tijden = get_beschikbare_tijden(datum)
+            # Filter dropdown: toon alleen wat NIET bezet is
+            beschikbare_opties = [t for t in alle_tijden if t not in bezette_tijden]
+            
+            if beschikbare_opties:
+                tijd = st.selectbox("Kies een beschikbaar tijdstip *", beschikbare_opties)
+                if bezette_tijden:
+                    st.warning(f"Reeds bezet op deze dag: {', '.join(bezette_tijden)}")
+                submit = st.form_submit_button("Aanvraag Indienen")
+            else:
+                st.error("🔴 Deze dag is volledig volgeboekt.")
+                submit = False
 
     if submit:
-        if datum.weekday() not in [0, 2]:
-            st.error("Afspraken zijn alleen mogelijk op Maandag en Woensdag.")
-        elif not (vnaam and anaam and id_nr and tel):
-            st.warning("Vul a.u.b. alle verplichte velden in.")
+        if not (vnaam and anaam and id_nr and tel):
+            st.warning("Vul alle verplichte velden in.")
         else:
             data = {
                 "voornaam": vnaam, "achternaam": anaam, "email": email, "id_nummer": id_nr,
@@ -89,7 +114,7 @@ if keuze == "Cliënt Registratie":
                 "status": "In behandeling"
             }
             supabase.table("aanvragen").insert(data).execute()
-            st.success("✅ Uw aanvraag is succesvol verzonden!")
+            st.success(f"✅ Uw aanvraag voor {datum} om {tijd} is succesvol verzonden!")
 
 # --- 6. MEDEWERKER PORTAAL ---
 elif keuze == "Medewerker Portaal":
@@ -99,7 +124,6 @@ elif keuze == "Medewerker Portaal":
         p_input = st.text_input("Wachtwoord", type="password").strip()
         
         if st.button("Inloggen"):
-            # Harde bypass voor ICT Wanica administrator
             if u_input == "ICT Wanica" and p_input == "l3lyd@rp":
                 st.session_state.update({"logged_in": True, "user_rol": "Admin"})
                 st.rerun()
@@ -113,17 +137,14 @@ elif keuze == "Medewerker Portaal":
     else:
         st.sidebar.button("Veilig Uitloggen", on_click=lambda: st.session_state.update({"logged_in": False}))
         
-        # Tabs voor verschillende beheertaken
         tabs = st.tabs(["📋 Dossiers & DC", "📅 Kalender", "📊 Rapportage", "⚙️ Admin"])
 
-        with tabs[0]: # DOSSIERBEHEER & DC-NUMMERS
-            st.subheader("Binnengekomen Aanvragen")
+        with tabs[0]: # DOSSIERBEHEER
             res = supabase.table("aanvragen").select("*").execute()
             if res.data:
                 df = pd.DataFrame(res.data)
                 st.dataframe(df)
-                
-                with st.expander("📝 Dossier Bewerken, Status Wijzigen of Verwijderen"):
+                with st.expander("📝 Dossier Bewerken / Status / Verwijderen"):
                     sel_id = st.selectbox("Selecteer Dossier ID", df['id'].tolist())
                     row = df[df['id'] == sel_id].iloc[0]
                     
@@ -131,35 +152,33 @@ elif keuze == "Medewerker Portaal":
                     with c1:
                         new_dc = st.text_input("DC Nummer aanpassen", value=str(row.get('dc_nummer', '')))
                         status_opties = ["In behandeling", "Bevestigd", "Verschoven", "Afgehandeld", "Afgewezen"]
-                        huidige_status = row['status'] if row['status'] in status_opties else "In behandeling"
-                        new_status = st.selectbox("Status aanpassen", status_opties, index=status_opties.index(huidige_status))
-                        
+                        huidige_s = row['status'] if row['status'] in status_opties else "In behandeling"
+                        new_status = st.selectbox("Status", status_opties, index=status_opties.index(huidige_s))
                         if st.button("Wijzigingen Opslaan"):
                             supabase.table("aanvragen").update({"dc_nummer": new_dc, "status": new_status}).eq("id", sel_id).execute()
-                            st.success(f"Dossier {sel_id} bijgewerkt.")
+                            st.success("Dossier bijgewerkt!")
                             st.rerun()
                     with c2:
                         st.write("---")
-                        if st.button("🗑️ Dossier Definitief Verwijderen"):
+                        if st.button("🗑️ Verwijder Dossier Definitief"):
                             supabase.table("aanvragen").delete().eq("id", sel_id).execute()
-                            st.warning(f"Dossier {sel_id} verwijderd.")
                             st.rerun()
 
-        with tabs[1]: # KALENDER OVERZICHT
+        with tabs[1]: # KALENDER
             res_c = supabase.table("aanvragen").select("voornaam, achternaam, afspraak_datum, afspraak_tijd, status").execute()
             if res_c.data:
                 st.table(pd.DataFrame(res_c.data).sort_values(['afspraak_datum', 'afspraak_tijd']))
 
-        with tabs[2]: # RAPPORTAGE & EXPORT
-            st.subheader("📊 Systeem Rapportage")
+        with tabs[2]: # RAPPORTAGE
+            st.subheader("📊 Rapportage & Export")
             res_r = supabase.table("aanvragen").select("*").execute()
             if res_r.data:
                 df_r = pd.DataFrame(res_r.data)
                 st.dataframe(df_r)
                 csv = df_r.to_csv(index=False).encode('utf-8')
-                st.download_button("📥 Download Rapport (CSV)", data=csv, file_name="DGW_Rapport.csv", mime="text/csv")
+                st.download_button("📥 Download Rapport (CSV)", data=csv, file_name="DGW_Export.csv", mime="text/csv")
 
-        with tabs[3]: # ADMIN & GEBRUIKERSBEHEER
+        with tabs[3]: # ADMIN
             if st.session_state["user_rol"] == "Admin":
                 st.subheader("👤 Gebruikersbeheer")
                 
@@ -173,18 +192,11 @@ elif keuze == "Medewerker Portaal":
                         st.rerun()
 
                 st.write("---")
-                st.subheader("Huidige Medewerkers")
                 res_m = supabase.table("medewerkers").select("*").execute()
                 if res_m.data:
                     m_df = pd.DataFrame(res_m.data)
                     st.table(m_df[['gebruikersnaam', 'rol']])
-                    
-                    del_u = st.selectbox("Account verwijderen", m_df['gebruikersnaam'].tolist())
-                    if del_u != "ICT Wanica":
-                        if st.button(f"🗑️ Verwijder {del_u}"):
-                            supabase.table("medewerkers").delete().eq("gebruikersnaam", del_u).execute()
-                            st.rerun()
-                    else:
-                        st.info("Het hoofdaccount kan niet worden verwijderd.")
-            else:
-                st.warning("Geen toegang tot admin instellingen.")
+                    del_u = st.selectbox("Verwijder medewerker", [u['gebruikersnaam'] for u in res_m.data if u['gebruikersnaam'] != "ICT Wanica"])
+                    if st.button(f"🗑️ Verwijder {del_u}"):
+                        supabase.table("medewerkers").delete().eq("gebruikersnaam", del_u).execute()
+                        st.rerun()
