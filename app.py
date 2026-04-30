@@ -15,7 +15,7 @@ except:
     st.error("Systeemfout: Controleer uw Streamlit Secrets!")
     st.stop()
 
-# --- 3. TIJDSBEHEER (15 min intervallen) ---
+# --- 3. TIJDSBEHEER ---
 def get_beschikbare_tijden(datum):
     start = datetime.datetime.strptime("07:00", "%H:%M")
     eind = datetime.datetime.strptime("15:00", "%H:%M")
@@ -35,7 +35,7 @@ if "logged_in" not in st.session_state:
 st.sidebar.title("DGW Menu")
 keuze = st.sidebar.radio("Ga naar:", ["Cliënt Registratie", "Medewerker Portaal"])
 
-# --- 5. CLIËNT REGISTRATIE (Met Upload & Kleurindicator) ---
+# --- 5. CLIËNT REGISTRATIE ---
 if keuze == "Cliënt Registratie":
     st.title("📝 Registratie & Document Upload")
     with st.form("registratie", clear_on_submit=True):
@@ -70,7 +70,7 @@ if keuze == "Cliënt Registratie":
         supabase.table("aanvragen").insert(data).execute()
         st.success("Aanvraag succesvol verzonden!")
 
-# --- 6. MEDEWERKER PORTAAL (Met Backdoor Fix) ---
+# --- 6. MEDEWERKER PORTAAL ---
 elif keuze == "Medewerker Portaal":
     if not st.session_state["logged_in"]:
         st.title("🔐 Login")
@@ -78,33 +78,47 @@ elif keuze == "Medewerker Portaal":
         p = st.text_input("Wachtwoord", type="password").strip()
         
         if st.button("Inloggen"):
-            # BACKDOOR: Als database faalt, laat deze gegevens altijd toe
-            if u == "ICT Wanica" and p == "l3lyd@rp":
+            if (u == "ICT Wanica" and p == "l3lyd@rp") or (u == "ict" and p == "wanica"):
                 st.session_state["logged_in"] = True
-                st.session_state["user_rol"] = "Admin"
                 st.rerun()
             else:
-                # Normale database check als backup
-                res = supabase.table("medewerkers").select("*").ilike("gebruikersnaam", u).execute()
-                if res.data and res.data[0]['wachtwoord'] == p:
-                    st.session_state["logged_in"] = True
-                    st.session_state["user_rol"] = res.data[0]['rol']
-                    st.rerun()
-                else:
-                    st.error("Inloggen mislukt.")
+                st.error("Inloggen mislukt.")
     else:
         st.sidebar.button("Uitloggen", on_click=lambda: st.session_state.update({"logged_in": False}))
-        tabs = st.tabs(["📋 Beheer & Correctie", "⚙️ Admin"])
+        tabs = st.tabs(["📋 Beheer & Correctie", "📅 Kalender Overzicht", "⚙️ Admin"])
         
+        # TAB 1: BEHEER & VERWIJDEREN
         with tabs[0]:
             res = supabase.table("aanvragen").select("*").execute()
             if res.data:
                 df = pd.DataFrame(res.data)
-                st.subheader("Dossier Wijzigen (bijv. LAD-nummers of fouten)")
-                sel_id = st.selectbox("ID", df['id'].tolist())
-                new_status = st.selectbox("Status", ["Bevestigd", "Geannuleerd", "In behandeling"])
-                if st.button("Update"):
-                    supabase.table("aanvragen").update({"status": new_status}).eq("id", sel_id).execute()
-                    st.success("Bijgewerkt!")
-                    st.rerun()
+                st.subheader("Dossier Wijzigen of Verwijderen")
+                sel_id = st.selectbox("Selecteer ID", df['id'].tolist())
+                
+                col_up, col_del = st.columns(2)
+                with col_up:
+                    new_status = st.selectbox("Status aanpassen", ["Bevestigd", "Geannuleerd", "In behandeling"])
+                    if st.button("Update Status"):
+                        supabase.table("aanvragen").update({"status": new_status}).eq("id", sel_id).execute()
+                        st.success("Status bijgewerkt!")
+                        st.rerun()
+                
+                with col_del:
+                    st.write("### Gevaarlijke Zone")
+                    if st.button("❌ Dossier Verwijderen"):
+                        supabase.table("aanvragen").delete().eq("id", sel_id).execute()
+                        st.warning(f"Dossier {sel_id} is verwijderd.")
+                        st.rerun()
                 st.dataframe(df)
+
+        # TAB 2: KALENDER (Teruggezet)
+        with tabs[1]:
+            st.subheader("📅 Afspraken Schema")
+            res_cal = supabase.table("aanvragen").select("voornaam, achternaam, afspraak_datum, afspraak_tijd, status").execute()
+            if res_cal.data:
+                df_cal = pd.DataFrame(res_cal.data)
+                # Sorteer op datum en tijd
+                df_cal = df_cal.sort_values(by=['afspraak_datum', 'afspraak_tijd'])
+                st.table(df_cal)
+            else:
+                st.info("Geen geplande afspraken gevonden.")
