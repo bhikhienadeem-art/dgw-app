@@ -10,6 +10,7 @@ from email.mime.application import MIMEApplication
 # --- 1. CONFIGURATIE & STYLING ---
 st.set_page_config(page_title="DGW Wanica Portaal", layout="wide")
 
+# Groen/wit interface styling
 st.markdown("""
     <style>
     .tijd-knop { display: inline-block; padding: 10px; margin: 5px; border-radius: 5px; text-align: center; font-weight: bold; width: 85px; }
@@ -19,6 +20,7 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
+# Verbinding met Supabase
 try:
     supabase = create_client(st.secrets["SUPABASE_URL"], st.secrets["SUPABASE_KEY"])
 except:
@@ -44,7 +46,7 @@ def stuur_mail(ontvanger, onderwerp, inhoud, bestanden=None):
     except Exception as e:
         st.warning(f"Mailfout: {e}")
 
-# --- 2. LOGIN SYSTEEM (Aangepast aan jouw tabel 'medewerkers') ---
+# --- 2. LOGIN SYSTEEM (Gekoppeld aan tabel: medewerkers) ---
 if 'logged_in' not in st.session_state:
     st.session_state.logged_in = False
     st.session_state.role = None
@@ -53,7 +55,6 @@ if 'logged_in' not in st.session_state:
 def login():
     st.sidebar.subheader("Inloggen Medewerker")
     try:
-        # We halen de data op uit JOUW tabel: 'medewerkers'
         res = supabase.table("medewerkers").select("*").execute()
         user_list = [u['gebruikersnaam'] for u in res.data] if res.data else []
         
@@ -70,9 +71,9 @@ def login():
             else:
                 st.sidebar.error("Onjuiste gegevens")
     except Exception as e:
-        st.sidebar.error(f"Database verbindingsfout: {e}")
+        st.sidebar.error(f"Database fout: {e}")
 
-# --- 3. MENU STRUCTUUR ---
+# --- 3. NAVIGATIE ---
 menu_options = ["Cliënt Registratie"]
 if st.session_state.logged_in:
     menu_options += ["Medewerker Portaal", "Rapportages"]
@@ -108,9 +109,9 @@ if menu == "Cliënt Registratie":
     st.subheader("📅 Beschikbaarheid")
     datum = st.date_input("Kies een datum", min_value=datetime.date.today())
     
-    if datum.weekday() not in [0, 2]:
+    vrije_tijden = []
+    if datum.weekday() not in [0, 2]: # Maandag en Woensdag
         st.error("⚠️ Afspraken zijn uitsluitend op Maandag en Woensdag.")
-        vrije_tijden = []
     else:
         tijden = [f"{h:02d}:{m:02d}" for h in range(7, 15) for m in [0, 15, 30, 45]]
         slots = [t for t in tijden if "07:30" <= t <= "14:00"]
@@ -135,19 +136,41 @@ if menu == "Cliënt Registratie":
                 "afspraak_datum": str(datum), "afspraak_tijd": gekozen_tijd, "status": "In behandeling"
             }
             supabase.table("aanvragen").insert(data).execute()
-            stuur_mail(st.secrets["EMAIL_USER"], f"Nieuwe aanvraag: {vnaam}", f"Aanvraag voor {datum}.", uploaded_files)
-            stuur_mail(email, "DGW Ontvangstbevestiging", f"Beste {vnaam}, uw afspraak staat voor {datum} om {gekozen_tijd}u.")
+            stuur_mail(st.secrets["EMAIL_USER"], f"Nieuwe aanvraag: {vnaam}", f"Nieuwe aanvraag van {vnaam} {anaam}.", uploaded_files)
+            stuur_mail(email, "DGW Ontvangstbevestiging", f"Beste {vnaam}, uw afspraak voor {datum} om {gekozen_tijd}u is ontvangen.")
             st.success("✅ Succesvol ingediend!")
             st.balloons()
         else:
             st.error("⚠️ Vul alle verplichte velden in.")
 
 elif menu == "Medewerker Portaal":
-    st.subheader("Beheer Aanvragen")
-    res = supabase.table("aanvragen").select("*").execute()
+    st.subheader("📋 Beheer Aanvragen")
+    res = supabase.table("aanvragen").select("*").order('afspraak_datum').execute()
     if res.data:
         df = pd.DataFrame(res.data)
-        st.dataframe(df)
+        st.dataframe(df, use_container_width=True)
+        
+        st.write("---")
+        st.subheader("⚙️ Actie uitvoeren")
+        opties = {row['id']: f"ID: {row['id']} | {row['voornaam']} {row['achternaam']}" for index, row in df.iterrows()}
+        selected_id = st.selectbox("Selecteer aanvraag", options=list(opties.keys()), format_func=lambda x: opties[x])
+        aanvraag = next(item for item in res.data if item["id"] == selected_id)
+        
+        col1, col2 = st.columns(2)
+        with col1:
+            nieuwe_status = st.selectbox("Status", ["In behandeling", "Bevestigd", "Geannuleerd", "Verwezen"])
+            n_datum = st.date_input("Datum aanpassen", value=datetime.datetime.strptime(aanvraag['afspraak_datum'], '%Y-%m-%d').date())
+        with col2:
+            n_tijd = st.text_input("Tijd aanpassen", value=aanvraag['afspraak_tijd'])
+            opmerking = st.text_area("Toelichting voor klant")
+
+        if st.button("Update & Mail Klant"):
+            supabase.table("aanvragen").update({"status": nieuwe_status, "afspraak_datum": str(n_datum), "afspraak_tijd": n_tijd}).eq("id", selected_id).execute()
+            
+            mail_inhoud = f"Beste {aanvraag['voornaam']},\n\nUw aanvraag is bijgewerkt naar: {nieuwe_status}.\nDatum: {n_datum}\nTijd: {n_tijd}u\n\nToelichting: {opmerking}"
+            stuur_mail(aanvraag['email'], f"Update DGW Aanvraag: {nieuwe_status}", mail_inhoud)
+            st.success("Bijgewerkt!")
+            st.rerun()
 
 elif menu == "Rapportages":
     st.subheader("📊 Rapportages")
@@ -155,20 +178,30 @@ elif menu == "Rapportages":
     if res.data:
         df = pd.DataFrame(res.data)
         st.bar_chart(df['status'].value_counts())
+        st.write(f"Totaal aantal registraties: {len(df)}")
 
 elif menu == "Admin Instellingen":
-    st.subheader("⚙️ Gebruikersbeheer (Tabel: medewerkers)")
-    
+    st.subheader("⚙️ Gebruikersbeheer")
     with st.expander("Nieuwe Medewerker Toevoegen"):
-        new_user = st.text_input("Gebruikersnaam")
-        new_pass = st.text_input("Wachtwoord", type="password")
-        new_role = st.selectbox("Rol", ["User", "Admin"])
+        n_user = st.text_input("Gebruikersnaam")
+        n_pass = st.text_input("Wachtwoord", type="password")
+        n_rol = st.selectbox("Rol", ["Medewerker", "Admin"])
         if st.button("Opslaan"):
-            supabase.table("medewerkers").insert({"gebruikersnaam": new_user, "wachtwoord": new_pass, "rol": new_role}).execute()
-            st.success("Medewerker toegevoegd!")
+            supabase.table("medewerkers").insert({"gebruikersnaam": n_user, "wachtwoord": n_pass, "rol": n_rol}).execute()
+            st.success("Toegevoegd!")
             st.rerun()
 
-    # Lijst van medewerkers tonen
+    st.write("---")
     res = supabase.table("medewerkers").select("*").execute()
     if res.data:
-        st.table(pd.DataFrame(res.data)[['gebruikersnaam', 'rol']])
+        df_m = pd.DataFrame(res.data)
+        st.table(df_m[['gebruikersnaam', 'rol']])
+        with st.expander("🗑️ Medewerker Verwijderen"):
+            to_del = st.selectbox("Selecteer te verwijderen account", df_m['gebruikersnaam'].tolist())
+            if to_del != st.session_state.user:
+                if st.button("Definitief Verwijderen"):
+                    supabase.table("medewerkers").delete().eq("gebruikersnaam", to_del).execute()
+                    st.success("Verwijderd!")
+                    st.rerun()
+            else:
+                st.warning("Je kunt jezelf niet verwijderen.")
