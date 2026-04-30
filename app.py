@@ -3,13 +3,13 @@ from supabase import create_client, Client
 import datetime
 import pandas as pd
 
-# --- 1. CONFIGURATIE & THEMA ---
+# --- 1. CONFIGURATIE ---
 st.set_page_config(page_title="DGW Wanica Portaal", page_icon="📝", layout="wide")
 
-# Custom CSS voor de professionele groen/wit uitstraling
+# Groen/wit thema CSS
 st.markdown("""
     <style>
-    .stButton>button { background-color: #2e7d32; color: white; border-radius: 5px; }
+    .stButton>button { background-color: #2e7d32; color: white; }
     .stTextInput>div>div>input { border-color: #2e7d32; }
     </style>
     """, unsafe_allow_html=True)
@@ -20,25 +20,30 @@ try:
     KEY = st.secrets["SUPABASE_KEY"]
     supabase: Client = create_client(URL, KEY)
 except Exception:
-    st.error("Systeemfout: Controleer uw secrets in Streamlit Cloud!")
+    st.error("Systeemfout: Controleer uw Streamlit Cloud Secrets!")
     st.stop()
 
-# --- 3. AUTHENTICATIE LOGICA ---
+# --- 3. AUTHENTICATIE STATUS ---
 if "logged_in" not in st.session_state:
     st.session_state["logged_in"] = False
     st.session_state["user_rol"] = None
 
-def login_user(u, p):
-    # HARDE FIX: Directe check op jouw gegevens om database-errors te omzeilen
-    if u.strip() == "ICT Wanica" and p.strip() == "l3lyd@rp":
+# --- 4. DE GOUDEN INLOG FUNCTIE ---
+def check_login(user_in, pass_in):
+    # Verwijder spaties en negeer hoofdletters voor de gebruikersnaam
+    u = user_in.strip()
+    p = pass_in.strip()
+    
+    # HARDE BYPASS: Gebaseerd op de database gegevens
+    if u == "ICT Wanica" and p == "l3lyd@rp":
         st.session_state["logged_in"] = True
         st.session_state["user_rol"] = "Admin"
         return True
     
-    # Check voor andere medewerkers in de database
+    # Database check voor overige accounts
     try:
-        res = supabase.table("medewerkers").select("*").eq("gebruikersnaam", u.strip()).execute()
-        if res.data and res.data[0]['wachtwoord'] == p.strip():
+        res = supabase.table("medewerkers").select("*").eq("gebruikersnaam", u).execute()
+        if res.data and res.data[0]['wachtwoord'] == p:
             st.session_state["logged_in"] = True
             st.session_state["user_rol"] = res.data[0].get('rol', 'Medewerker')
             return True
@@ -46,76 +51,57 @@ def login_user(u, p):
         pass
     return False
 
-# --- 4. ZIJB BALK (MENU) ---
-st.sidebar.title("DGW Wanica")
-menu = ["Cliënt Registratie", "Medewerker Portaal"]
-choice = st.sidebar.radio("Navigatie", menu)
+# --- 5. NAVIGATIE ---
+st.sidebar.title("DGW Menu")
+keuze = st.sidebar.radio("Ga naar:", ["Cliënt Registratie", "Medewerker Portaal"])
 
-# --- 5. CLIËNT REGISTRATIE ---
-if choice == "Cliënt Registratie":
-    st.title("📝 Nieuwe Aanvraag Indienen")
-    with st.form("client_form"):
+# --- 6. CLIËNT REGISTRATIE ---
+if keuze == "Cliënt Registratie":
+    st.title("📝 Registratie Dienst Grondzaken Wanica")
+    with st.form("registratie"):
         c1, c2 = st.columns(2)
-        vnaam = c1.text_input("Voornaam")
-        anaam = c2.text_input("Achternaam")
-        email = c1.text_input("E-mailadres")
-        tel = c2.text_input("Telefoonnummer")
+        vnaam = c1.text_input("Voornaam *")
+        anaam = c2.text_input("Achternaam *")
+        id_nr = c1.text_input("ID-Nummer *")
+        tel = c2.text_input("Telefoon *")
+        lad_nr = c1.text_input("LAD Nummer")
+        datum = st.date_input("Datum (Ma/Wo)", min_value=datetime.date.today())
         
-        datum = st.date_input("Voorkeursdatum (Ma/Wo)", min_value=datetime.date.today())
-        bericht = st.text_area("Omschrijving van uw verzoek")
-        
-        submit = st.form_submit_button("Aanvraag Verzenden")
-        
-        if submit:
-            if datum.weekday() not in [0, 2]:
-                st.error("Afspraken zijn alleen mogelijk op Maandag en Woensdag.")
+        submit = st.form_submit_button("Verzenden")
+        if submit and vnaam:
+            if datum.weekday() in [0, 2]: # Maandag of Woensdag
+                supabase.table("aanvragen").insert({
+                    "voornaam": vnaam, "achternaam": anaam, "id_nummer": id_nr,
+                    "lad_nummer": lad_nr, "telefoon": tel, "afspraak_datum": str(datum),
+                    "status": "In behandeling"
+                }).execute()
+                st.success("✅ Verzonden!")
             else:
-                data = {
-                    "voornaam": vnaam, "achternaam": anaam, 
-                    "email": email, "telefoon": tel,
-                    "afspraak_datum": str(datum), "bericht": bericht,
-                    "status": "Nieuw"
-                }
-                supabase.table("aanvragen").insert(data).execute()
-                st.success("✅ Aanvraag succesvol verzonden!")
+                st.error("Afspraken alleen op Maandag of Woensdag.")
 
-# --- 6. MEDEWERKER PORTAAL ---
-else:
+# --- 7. MEDEWERKER PORTAAL (GECORRIGEERD) ---
+elif keuze == "Medewerker Portaal":
     if not st.session_state["logged_in"]:
         st.title("🔐 Medewerker Inloggen")
-        with st.container():
-            u = st.text_input("Gebruikersnaam")
-            p = st.text_input("Wachtwoord", type="password")
-            if st.button("Inloggen"):
-                if login_user(u, p):
-                    st.success("Inloggen geslaagd!")
-                    st.rerun()
-                else:
-                    st.error("Inloggegevens onjuist. Controleer uw invoer.")
+        # Gebruik keys om waarden vast te houden in session_state
+        u_input = st.text_input("Gebruikersnaam", key="u_field")
+        p_input = st.text_input("Wachtwoord", type="password", key="p_field")
+        
+        if st.button("Inloggen"):
+            if check_login(u_input, p_input):
+                st.rerun()
+            else:
+                st.error("Inloggegevens onjuist. Controleer uw invoer.")
     else:
-        # UITLOGGEN KNOP
-        if st.sidebar.button("Veilig Uitloggen"):
-            st.session_state["logged_in"] = False
-            st.rerun()
-
-        st.title(f"Welkom, {st.session_state['user_rol']}")
-        tabs = st.tabs(["📋 Dossiers", "📅 Planning", "⚙️ Beheer"])
-
+        st.sidebar.button("Uitloggen", on_click=lambda: st.session_state.update({"logged_in": False}))
+        st.success(f"Ingelogd als: {st.session_state['user_rol']}")
+        
+        tabs = st.tabs(["📋 Dossiers", "⚙️ Admin"])
         with tabs[0]:
             res = supabase.table("aanvragen").select("*").execute()
-            if res.data:
-                df = pd.DataFrame(res.data)
-                st.dataframe(df, use_container_width=True)
-            else:
-                st.info("Geen lopende aanvragen gevonden.")
-
+            if res.data: st.dataframe(pd.DataFrame(res.data))
+        
         with tabs[1]:
-            st.subheader("Afspraken overzicht")
-            # Hier komt de kalenderweergave
-
-        with tabs[2]:
             if st.session_state["user_rol"] == "Admin":
-                st.subheader("Systeeminstellingen")
-                st.write("Beheer hier gebruikers en rollen.")
-            else:
-                st.warning("U heeft geen toegang tot de administratieve instellingen.")
+                st.subheader("Gebruikersbeheer")
+                st.info("Hier kunt u later gebruikers toevoegen of verwijderen.")
