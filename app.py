@@ -11,8 +11,8 @@ try:
     URL = st.secrets["SUPABASE_URL"]
     KEY = st.secrets["SUPABASE_KEY"]
     supabase: Client = create_client(URL, KEY)
-except:
-    st.error("Database-verbinding mislukt. Controleer je Streamlit Secrets!")
+except Exception as e:
+    st.error("Systeemfout: Controleer uw Streamlit Secrets (URL/KEY)!")
     st.stop()
 
 # --- 3. HELPER FUNCTIES ---
@@ -23,9 +23,10 @@ def get_beschikbare_tijden(datum):
     while start <= eind:
         tijden.append(start.strftime("%H:%M"))
         start += datetime.timedelta(minutes=15)
+    
     res = supabase.table("aanvragen").select("afspraak_tijd").eq("afspraak_datum", str(datum)).execute()
-    bezette = [r['afspraak_tijd'] for r in res.data] if res.data else []
-    return tijden, bezette
+    bezette_tijden = [r['afspraak_tijd'] for r in res.data] if res.data else []
+    return tijden, bezette_tijden
 
 # --- 4. NAVIGATIE & AUTHENTICATIE ---
 if "logged_in" not in st.session_state:
@@ -47,19 +48,26 @@ if keuze == "Cliënt Registratie":
             tel = st.text_input("Telefoon *")
         with col2:
             email = st.text_input("E-mail *")
-            lad_nr = st.text_input("LAD Nummer")
+            lad_nr = st.text_input("LAD Nummer (optioneel)")
             woonadres = st.text_input("Woonadres *")
         
-        bericht = st.text_area("Bericht / Omschrijving verzoek *")
-        datum = st.date_input("Afspraakdatum (Ma/Wo)", min_value=datetime.date.today())
-        alle_tijden, bezet = get_beschikbare_tijden(datum)
-        tijd = st.selectbox("Tijdstip", alle_tijden)
+        # 'bericht' kolom gematched met database uit image_feb3be.png
+        bericht = st.text_area("Omschrijving van het verzoek / Bericht *")
         
-        uploaded_file = st.file_uploader("Document Upload", type=['pdf', 'jpg', 'png'])
-        submit = st.form_submit_button("Verzenden")
+        datum = st.date_input("Kies datum (Maandag of Woensdag)", min_value=datetime.date.today())
+        alle_tijden, bezet = get_beschikbare_tijden(datum)
+        tijd = st.selectbox("Kies tijdstip (15 min)", alle_tijden)
+        
+        if tijd in bezet:
+            st.error(f"🔴 {tijd} is al bezet.")
+        else:
+            st.success(f"🟢 {tijd} is beschikbaar.")
 
-    if submit and vnaam and woonadres:
-        if datum.weekday() in [0, 2]:
+        uploaded_file = st.file_uploader("Upload documenten (PDF/JPG/PNG)", type=['pdf', 'jpg', 'png'])
+        submit = st.form_submit_button("Aanvraag Verzenden")
+
+    if submit and vnaam and woonadres and bericht:
+        if datum.weekday() in [0, 2]: # Maandag=0, Woensdag=2
             doc_url = ""
             if uploaded_file:
                 fn = f"docs/{vnaam}_{datetime.datetime.now().timestamp()}.pdf"
@@ -73,64 +81,105 @@ if keuze == "Cliënt Registratie":
                 "status": "In behandeling", "document_url": doc_url
             }
             supabase.table("aanvragen").insert(data).execute()
-            st.success("Aanvraag verzonden!")
+            st.success("✅ Uw aanvraag is succesvol verzonden!")
         else:
-            st.error("Afspraken alleen op maandag of woensdag.")
+            st.error("⚠️ Afspraken kunnen alleen op Maandag of Woensdag worden gemaakt.")
 
-# --- 6. MEDEWERKER PORTAAL (Gefixeerde Login) ---
+# --- 6. MEDEWERKER PORTAAL ---
 elif keuze == "Medewerker Portaal":
     if not st.session_state["logged_in"]:
         st.title("🔐 Login Medewerker")
-        # Gebruik .lower() en .strip() om alle invoerfouten te voorkomen
         u_input = st.text_input("Gebruikersnaam").strip()
         p_input = st.text_input("Wachtwoord", type="password").strip()
         
         if st.button("Inloggen"):
-            # De gegevens uit image_ff18bf.png
+            # Robuuste check voor ICT Wanica login (image_ff18bf.png)
             if u_input.lower() == "ict wanica" and p_input == "l3lyd@rp":
                 st.session_state.update({"logged_in": True, "user_rol": "Admin"})
                 st.rerun()
             else:
-                # Check database als backup
-                res = supabase.table("medewerkers").select("*").eq("gebruikersnaam", u_input).execute()
-                if res.data and res.data[0]['wachtwoord'] == p_input:
-                    st.session_state.update({"logged_in": True, "user_rol": res.data[0]['rol']})
-                    st.rerun()
-                else:
-                    st.error("Inloggen mislukt. Gebruik de gegevens uit de handleiding.")
+                try:
+                    res = supabase.table("medewerkers").select("*").eq("gebruikersnaam", u_input).execute()
+                    if res.data and res.data[0]['wachtwoord'] == p_input:
+                        st.session_state.update({"logged_in": True, "user_rol": res.data[0]['rol']})
+                        st.rerun()
+                    else:
+                        st.error("Inloggen mislukt. Controleer uw gegevens.")
+                except:
+                    st.error("Inlogservice tijdelijk niet beschikbaar.")
     else:
+        st.sidebar.info(f"Ingelogd als: {st.session_state['user_rol']}")
         st.sidebar.button("Uitloggen", on_click=lambda: st.session_state.update({"logged_in": False}))
+        
         tabs = st.tabs(["📋 Dossiers", "📅 Kalender", "📊 Rapportage", "⚙️ Admin"])
 
-        with tabs[0]: # BEHEER
+        # TAB 1: DOSSIERS (Beheer & Verwijderen)
+        with tabs[0]:
+            st.subheader("Dossiers Aanpassen of Verwijderen")
             res = supabase.table("aanvragen").select("*").execute()
             if res.data:
                 df = pd.DataFrame(res.data)
-                sel_id = st.selectbox("Dossier ID", df['id'].tolist())
-                if st.button("❌ Verwijder Dossier"):
-                    supabase.table("aanvragen").delete().eq("id", sel_id).execute()
-                    st.rerun()
+                sel_id = st.selectbox("Selecteer Dossier ID", df['id'].tolist())
+                
+                c1, c2 = st.columns(2)
+                with c1:
+                    new_st = st.selectbox("Update Status", ["Bevestigd", "Geannuleerd", "In behandeling"])
+                    if st.button("Status Bijwerken"):
+                        supabase.table("aanvragen").update({"status": new_st}).eq("id", sel_id).execute()
+                        st.rerun()
+                with c2:
+                    if st.button("❌ Verwijder Dossier"):
+                        supabase.table("aanvragen").delete().eq("id", sel_id).execute()
+                        st.rerun()
                 st.dataframe(df)
 
-        with tabs[1]: # KALENDER
+        # TAB 2: KALENDER
+        with tabs[1]:
+            st.subheader("📅 Afspraken Schema")
             res_c = supabase.table("aanvragen").select("voornaam, achternaam, afspraak_datum, afspraak_tijd, status").execute()
-            if res_c.data: st.table(pd.DataFrame(res_c.data).sort_values(['afspraak_datum', 'afspraak_tijd']))
+            if res_c.data:
+                df_c = pd.DataFrame(res_c.data).sort_values(['afspraak_datum', 'afspraak_tijd'])
+                st.table(df_c)
 
-        with tabs[2]: # RAPPORTAGE
+        # TAB 3: RAPPORTAGE (Download)
+        with tabs[2]:
+            st.subheader("📊 Rapportage & Export")
             res_r = supabase.table("aanvragen").select("*").execute()
             if res_r.data:
                 df_r = pd.DataFrame(res_r.data)
-                # Voorkom KeyError door te checken welke kolommen bestaan
-                cols = [c for c in ["voornaam", "achternaam", "bericht", "woonadres", "status"] if c in df_r.columns]
+                # Veiligheidscheck op kolomnamen om KeyErrors te voorkomen
+                cols = [c for c in ["voornaam", "achternaam", "bericht", "woonadres", "afspraak_datum", "status"] if c in df_r.columns]
                 st.dataframe(df_r[cols])
-                st.download_button("📥 Download CSV", df_r.to_csv(index=False).encode('utf-8'), "DGW_Export.csv", "text/csv")
+                csv = df_r.to_csv(index=False).encode('utf-8')
+                st.download_button("📥 Download Rapportage (CSV)", csv, "DGW_Rapport.csv", "text/csv")
 
-        with tabs[3]: # ADMIN
+        # TAB 4: ADMIN (Gebruikersbeheer)
+        with tabs[3]:
             if st.session_state["user_rol"] == "Admin":
-                st.subheader("Gebruikersbeheer")
-                nu = st.text_input("Nieuwe Gebruiker")
-                np = st.text_input("Wachtwoord")
-                if st.button("Voeg toe"):
-                    supabase.table("medewerkers").insert({"gebruikersnaam": nu, "wachtwoord": np, "rol": "Medewerker"}).execute()
-                    st.success("Toegevoegd!")
-            else: st.warning("Geen Admin rechten.")
+                st.subheader("👥 Medewerker Accounts Beheren")
+                
+                with st.expander("➕ Nieuwe Medewerker Toevoegen"):
+                    nu = st.text_input("Nieuwe Gebruikersnaam").strip()
+                    np = st.text_input("Nieuw Wachtwoord").strip()
+                    nr = st.selectbox("Rol", ["Medewerker", "Admin"])
+                    if st.button("Account Aanmaken"):
+                        if nu and np:
+                            supabase.table("medewerkers").insert({"gebruikersnaam": nu, "wachtwoord": np, "rol": nr}).execute()
+                            st.success(f"Account voor {nu} aangemaakt!")
+                            st.rerun()
+
+                st.divider()
+                st.subheader("🗑️ Bestaande Accounts")
+                res_m = supabase.table("medewerkers").select("*").execute()
+                if res_m.data:
+                    df_m = pd.DataFrame(res_m.data)
+                    st.dataframe(df_m[["gebruikersnaam", "rol"]])
+                    del_u = st.selectbox("Selecteer account om te verwijderen", df_m['gebruikersnaam'].tolist())
+                    if st.button("Verwijder Account"):
+                        if del_u != "ICT Wanica":
+                            supabase.table("medewerkers").delete().eq("gebruikersnaam", del_u).execute()
+                            st.rerun()
+                        else:
+                            st.error("Systeemaccount kan niet worden verwijderd.")
+            else:
+                st.error("⚠️ Alleen Admins hebben toegang tot deze instellingen.")
