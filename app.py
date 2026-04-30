@@ -81,7 +81,7 @@ if keuze == "Cliënt Registratie":
         st.subheader("📅 Plan uw afspraak")
         datum = st.date_input("Kies een datum", min_value=datetime.date.today())
         
-        # FIX: Gebruik isoweekday() (1=Ma, 3=Wo) om server-verwarring te voorkomen
+        # STRIKTE FIX: Gebruik isoweekday() (1=Maandag, 3=Woensdag)
         iso_dag = datum.isoweekday() 
         dag_namen = {1: "Maandag", 2: "Dinsdag", 3: "Woensdag", 4: "Donderdag", 5: "Vrijdag", 6: "Zaterdag", 7: "Zondag"}
         huidige_dagnaam = dag_namen.get(iso_dag)
@@ -136,7 +136,7 @@ elif keuze == "Medewerker Portaal":
         st.sidebar.button("Veilig Uitloggen", on_click=lambda: st.session_state.update({"logged_in": False}))
         tabs = st.tabs(["📋 Dossiers & DC", "📅 Kalender", "📊 Rapportage", "⚙️ Admin"])
 
-        with tabs[0]: # DOSSIERS & DC-NUMMERS
+        with tabs[0]: 
             res = supabase.table("aanvragen").select("*").execute()
             if res.data:
                 df = pd.DataFrame(res.data)
@@ -147,7 +147,7 @@ elif keuze == "Medewerker Portaal":
                     
                     c1, c2 = st.columns(2)
                     with c1:
-                        # Medewerkers kunnen DC nummers invoeren en wijzigen
+                        # Medewerkers kunnen DC-nummers invoeren en corrigeren
                         new_dc = st.text_input("DC Nummer", value=str(row.get('dc_nummer', '')))
                         opts = ["In behandeling", "Bevestigd", "Verschoven", "Afgehandeld", "Afgewezen"]
                         new_s = st.selectbox("Status", opts, index=opts.index(row['status']) if row['status'] in opts else 0)
