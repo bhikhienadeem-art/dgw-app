@@ -81,19 +81,19 @@ if keuze == "Cliënt Registratie":
         st.write("---")
         st.subheader("📅 Plan uw afspraak")
         
-        # Gebruik de huidige datum als standaard
         datum = st.date_input("Kies een datum", min_value=datetime.date.today())
         
-        # --- DE FIX VOOR DAG-HERKENNING ---
-        # isoweekday() geeft ALTIJD 1 voor Maandag en 3 voor Woensdag
-        iso_dag_nummer = datum.isoweekday() 
+        # --- DE WATERDICHTE FIX VOOR DAG-HERKENNING ---
+        # isoweekday() geeft ALTIJD 1 voor Maandag en 3 voor Woensdag, ongeacht server-taal.
+        iso_dag = datum.isoweekday() 
         
+        # Handmatige vertaling om verwarring te voorkomen
         nederlandse_dagen = {1: "Maandag", 2: "Dinsdag", 3: "Woensdag", 4: "Donderdag", 
                              5: "Vrijdag", 6: "Zaterdag", 7: "Zondag"}
-        huidige_dagnaam = nederlandse_dagen.get(iso_dag_nummer)
+        huidige_dagnaam = nederlandse_dagen.get(iso_dag)
 
         # Controleer strikt op 1 (Maandag) en 3 (Woensdag)
-        if iso_dag_nummer not in [1, 3]:
+        if iso_dag not in [1, 3]:
             st.error(f"❌ {huidige_dagnaam} is niet beschikbaar. Kies a.u.b. een Maandag of Woensdag.")
             submit = st.form_submit_button("Dag niet beschikbaar", disabled=True)
         else:
@@ -101,7 +101,7 @@ if keuze == "Cliënt Registratie":
             beschikbare_opties = [t for t in alle_tijden if t not in bezette_tijden]
             
             if beschikbare_opties:
-                st.success(f"✅ {huidige_dagnaam} geselecteerd. Kies uw tijdstip.")
+                st.success(f"✅ {huidige_dagnaam} geselecteerd. Kies een tijdstip.")
                 tijd = st.selectbox("Beschikbare tijden *", beschikbare_opties)
                 submit = st.form_submit_button("Aanvraag Indienen")
             else:
@@ -117,7 +117,7 @@ if keuze == "Cliënt Registratie":
                 "status": "In behandeling"
             }
             supabase.table("aanvragen").insert(data).execute()
-            st.success(f"✅ Gelukt! Uw afspraak staat gepland op {huidige_dagnaam} {datum} om {tijd}.")
+            st.success(f"✅ Gelukt! Uw afspraak staat voor {huidige_dagnaam} {datum} om {tijd}.")
         else:
             st.warning("Vul a.u.b. alle verplichte velden (*) in.")
 
@@ -155,17 +155,4 @@ elif keuze == "Medewerker Portaal":
                     new_s = st.selectbox("Status", opts, index=opts.index(row['status']) if row['status'] in opts else 0)
                     if st.button("Opslaan"):
                         supabase.table("aanvragen").update({"dc_nummer": new_dc, "status": new_s}).eq("id", sel_id).execute()
-                        st.rerun()
-            else:
-                st.info("Nog geen aanvragen in de database.")
-
-        with tabs[3]: # ADMIN
-            if st.session_state["user_rol"] == "Admin":
-                st.subheader("👤 Gebruikersbeheer")
-                res_m = supabase.table("medewerkers").select("*").execute()
-                if res_m.data:
-                    st.table(pd.DataFrame(res_m.data)[['gebruikersnaam', 'rol']])
-                    del_u = st.selectbox("Verwijder gebruiker", [u['gebruikersnaam'] for u in res_m.data if u['gebruikersnaam'] != "ICT Wanica"])
-                    if st.button("Verwijderen"):
-                        supabase.table("medewerkers").delete().eq("gebruikersnaam", del_u).execute()
                         st.rerun()
