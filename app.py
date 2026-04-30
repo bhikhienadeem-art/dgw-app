@@ -12,7 +12,7 @@ try:
     KEY = st.secrets["SUPABASE_KEY"]
     supabase: Client = create_client(URL, KEY)
 except Exception:
-    st.error("Systeemfout: Controleer uw Streamlit Secrets!")
+    st.error("Database-verbinding mislukt. Controleer je Streamlit Secrets!")
     st.stop()
 
 # --- 3. HELPER FUNCTIES ---
@@ -75,18 +75,25 @@ elif keuze == "Medewerker Portaal":
         st.title("🔐 Login Medewerker")
         u_input = st.text_input("Gebruikersnaam").strip()
         p_input = st.text_input("Wachtwoord", type="password").strip()
+        
         if st.button("Inloggen"):
-            if u_input.lower() == "ict wanica" and p_input == "l3lyd@rp":
+            # We checken eerst de database voor alle gebruikers (inclusief ICT Wanica)
+            res = supabase.table("medewerkers").select("*").ilike("gebruikersnaam", u_input).execute()
+            
+            if res.data and res.data[0]['wachtwoord'] == p_input:
+                st.session_state.update({
+                    "logged_in": True, 
+                    "user_rol": res.data[0].get('rol', 'Medewerker')
+                })
+                st.rerun()
+            # Back-up inlog voor het geval de database-entry nog niet klopt
+            elif u_input.lower() == "ict wanica" and p_input == "l3lyd@rp":
                 st.session_state.update({"logged_in": True, "user_rol": "Admin"})
                 st.rerun()
             else:
-                res = supabase.table("medewerkers").select("*").eq("gebruikersnaam", u_input).execute()
-                if res.data and res.data[0]['wachtwoord'] == p_input:
-                    st.session_state.update({"logged_in": True, "user_rol": res.data[0].get('rol', 'Medewerker')})
-                    st.rerun()
-                else: st.error("Inloggegevens onjuist.")
+                st.error("Inloggegevens onjuist. Controleer gebruikersnaam en wachtwoord.")
     else:
-        st.sidebar.info(f"Rol: {st.session_state['user_rol']}")
+        st.sidebar.info(f"Ingelogd als: {st.session_state['user_rol']}")
         st.sidebar.button("Uitloggen", on_click=lambda: st.session_state.update({"logged_in": False}))
         tabs = st.tabs(["📋 Dossiers", "📅 Kalender", "📊 Rapportage", "⚙️ Admin"])
 
@@ -116,7 +123,7 @@ elif keuze == "Medewerker Portaal":
                 st.subheader("👥 Gebruikersbeheer")
                 colA, colB, colC = st.columns(3)
                 with colA: nu = st.text_input("Nieuwe Gebruiker").strip()
-                with colB: np = st.text_input("Wachtwoord").strip()
+                with colB: np = st.text_input("Nieuw Wachtwoord").strip()
                 with colC: nr = st.selectbox("Rol", ["Medewerker", "Admin"])
                 
                 if st.button("➕ Account Aanmaken"):
