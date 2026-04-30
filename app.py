@@ -4,7 +4,6 @@ import datetime
 import pandas as pd
 
 # --- 1. CONFIGURATIE & THEMA ---
-# Gebruik van het gewenste groen/wit kleurenschema
 st.set_page_config(page_title="DGW Wanica Portaal", page_icon="📝", layout="wide")
 
 st.markdown("""
@@ -23,20 +22,20 @@ st.markdown("""
 try:
     URL = st.secrets["SUPABASE_URL"]
     KEY = st.secrets["SUPABASE_KEY"]
-    supabase: Client = create_client(URL, KEY) # Koppeling met Supabase
+    supabase: Client = create_client(URL, KEY)
 except Exception:
     st.error("Systeemfout: Databaseverbinding mislukt!")
     st.stop()
 
 # --- 3. HELPER FUNCTIES ---
 def get_beschikbare_tijden(datum):
-    # Afspraken uitsluitend tussen 07:00u en 15:00u met 15-minuten intervallen
-    start = datetime.datetime.strptime("07:00", "%H:%M")
-    eind = datetime.datetime.strptime("15:00", "%H:%M")
+    # Nieuwe tijden: 07:30 tot 14:00
+    start = datetime.datetime.strptime("07:30", "%H:%M")
+    eind = datetime.datetime.strptime("14:00", "%H:%M")
     tijden = []
     while start <= eind:
         tijden.append(start.strftime("%H:%M"))
-        start += datetime.timedelta(minutes=15)
+        start += datetime.timedelta(minutes=15) # Interval van 15 min
     
     res = supabase.table("aanvragen").select("afspraak_tijd").eq("afspraak_datum", str(datum)).execute()
     bezette_tijden = [r['afspraak_tijd'] for r in res.data] if res.data else []
@@ -45,7 +44,6 @@ def get_beschikbare_tijden(datum):
 # --- 4. AUTHENTICATIE STATUS ---
 if "logged_in" not in st.session_state:
     st.session_state["logged_in"] = False
-    st.session_state["user_rol"] = None
 
 st.sidebar.title("DGW Wanica Menu")
 keuze = st.sidebar.radio("Navigatie:", ["Cliënt Registratie", "Medewerker Portaal"])
@@ -57,7 +55,7 @@ if keuze == "Cliënt Registratie":
     st.markdown("""
         <div class="highlight-box">
             <h3 style='color: #2e7d32; margin-top: 0;'>📅 Afspraak Informatie</h3>
-            <p>Afspraken uitsluitend op: <b>Maandag</b> en <b>Woensdag</b> (07:00u - 15:00u).</p>
+            <p>Afspraken uitsluitend op: <b>Maandag</b> en <b>Woensdag</b> (07:30u - 14:00u).</p>
         </div>
     """, unsafe_allow_html=True)
     
@@ -70,28 +68,29 @@ if keuze == "Cliënt Registratie":
             tel = st.text_input("Telefoonnummer *")
         with col2:
             email = st.text_input("E-mailadres *")
-            lad_nr = st.text_input("LAD Nummer") # LAD nummer veld
+            lad_nr = st.text_input("LAD Nummer")
             woonadres = st.text_input("Woonadres *")
         
         bericht = st.text_area("Omschrijving van uw verzoek of klacht *")
         
         st.write("---")
         st.subheader("📄 Documenten")
-        # Document upload hersteld
         geuploade_file = st.file_uploader("Upload relevante documenten (PDF/JPG/PNG)", type=['pdf', 'png', 'jpg', 'jpeg'])
         
         st.write("---")
         st.subheader("📅 Plan uw afspraak")
         datum = st.date_input("Kies een datum", min_value=datetime.date.today())
         
-        # --- DE DEFINITIEVE FIX ---
-        # isoweekday() geeft 1 voor maandag en 3 voor woensdag. 
-        # Dit voorkomt de fout die op image_f266f6.png te zien is.
-        iso_dag = datum.isoweekday() 
-        dag_namen = {1: "Maandag", 2: "Dinsdag", 3: "Woensdag", 4: "Donderdag", 5: "Vrijdag", 6: "Zaterdag", 7: "Zondag"}
-        huidige_dagnaam = dag_namen.get(iso_dag)
+        # --- DE NIEUWE OPLOSSING ---
+        # We kijken nu naar de Engelse naam van de dag om verwarring met nummers te voorkomen
+        dag_naam_en = datum.strftime("%A") 
+        vertaling = {
+            "Monday": "Maandag", "Tuesday": "Dinsdag", "Wednesday": "Woensdag",
+            "Thursday": "Donderdag", "Friday": "Vrijdag", "Saturday": "Zaterdag", "Sunday": "Zondag"
+        }
+        huidige_dagnaam = vertaling.get(dag_naam_en)
 
-        if iso_dag not in [1, 3]: # Beperking tot Maandag (1) en Woensdag (3)
+        if dag_naam_en not in ["Monday", "Wednesday"]: # Alleen Ma en Wo
             st.error(f"❌ {huidige_dagnaam} is niet beschikbaar. Kies a.u.b. een Maandag of Woensdag.")
             submit = st.form_submit_button("Dag niet beschikbaar", disabled=True)
         else:
@@ -116,7 +115,7 @@ if keuze == "Cliënt Registratie":
                 "document_naam": doc_naam, "status": "In behandeling"
             }
             supabase.table("aanvragen").insert(data).execute()
-            st.success(f"✅ Uw aanvraag voor {huidige_dagnaam} {datum} is succesvol verzonden!")
+            st.success(f"✅ Uw aanvraag voor {huidige_dagnaam} {datum} om {tijd}u is verzonden!")
         else:
             st.warning("Vul alle verplichte velden (*) in.")
 
@@ -127,7 +126,6 @@ elif keuze == "Medewerker Portaal":
         u = st.text_input("Gebruikersnaam").strip()
         p = st.text_input("Wachtwoord", type="password").strip()
         if st.button("Inloggen"):
-            # Gebruikersbeheer met rollen (Admin vs Medewerker)
             if u == "ICT Wanica" and p == "l3lyd@rp":
                 st.session_state.update({"logged_in": True, "user_rol": "Admin"})
                 st.rerun()
@@ -139,25 +137,21 @@ elif keuze == "Medewerker Portaal":
                 else:
                     st.error("Foutieve gegevens.")
     else:
-        st.sidebar.button("Veilig Uitloggen", on_click=lambda: st.session_state.update({"logged_in": False}))
-        tabs = st.tabs(["📋 Dossiers & DC", "📅 Kalender", "📊 Rapportage", "⚙️ Admin"])
+        st.sidebar.button("Uitloggen", on_click=lambda: st.session_state.update({"logged_in": False}))
+        tabs = st.tabs(["📋 Dossiers", "⚙️ Admin"])
 
         with tabs[0]: 
             res = supabase.table("aanvragen").select("*").execute()
             if res.data:
                 df = pd.DataFrame(res.data)
                 st.dataframe(df)
-                with st.expander("📝 Dossier Bewerken / DC Nummer invoeren"):
-                    sel_id = st.selectbox("Selecteer Dossier ID", df['id'].tolist())
+                with st.expander("📝 Dossier bijwerken (DC nummer invoeren/corrigeren)"):
+                    sel_id = st.selectbox("Dossier ID", df['id'].tolist())
                     row = df[df['id'] == sel_id].iloc[0]
-                    
-                    c1, c2 = st.columns(2)
-                    with c1:
-                        # Baliemedewerkers kunnen DC-nummers invoeren en corrigeren bij fouten
-                        new_dc = st.text_input("DC Nummer", value=str(row.get('dc_nummer', '')))
-                        opts = ["In behandeling", "Bevestigd", "Verschoven", "Afgehandeld", "Afgewezen"]
-                        new_s = st.selectbox("Status", opts, index=opts.index(row['status']) if row['status'] in opts else 0)
-                        if st.button("Wijzigingen Opslaan"):
-                            supabase.table("aanvragen").update({"dc_nummer": new_dc, "status": new_s}).eq("id", sel_id).execute()
-                            st.success("Dossier bijgewerkt!")
-                            st.rerun()
+                    # Baliemedewerkers kunnen DC nummers invoeren en wijzigen bij fouten
+                    new_dc = st.text_input("DC Nummer", value=str(row.get('dc_nummer', '')))
+                    new_s = st.selectbox("Status", ["In behandeling", "Bevestigd", "Afgehandeld", "Afgewezen"], index=0)
+                    if st.button("Opslaan"):
+                        supabase.table("aanvragen").update({"dc_nummer": new_dc, "status": new_s}).eq("id", sel_id).execute()
+                        st.success("Opgeslagen!")
+                        st.rerun()
