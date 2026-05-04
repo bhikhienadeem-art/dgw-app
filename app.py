@@ -10,7 +10,7 @@ import urllib.parse
 from streamlit_calendar import calendar
 
 # --- 1. CONFIGURATIE & STYLING ---
-st.set_page_config(page_title="DGW Wanica Portaal", layout="wide")
+st.set_page_config(page_title="Registratie Dienst Grondzaken Wanica", layout="wide")
 
 try:
     st.sidebar.image("orgineel logo Centrum.png", use_container_width=True)
@@ -89,7 +89,6 @@ menu = st.sidebar.radio("Navigatie", menu_options)
 
 # --- 4. PAGINA'S ---
 
-# --- CLIENT REGISTRATIE ---
 if menu == "Registratie DGW":
     st.header("📝 Registratie Dienst Grondzaken Wanica")
     col1, col2 = st.columns(2)
@@ -110,7 +109,7 @@ if menu == "Registratie DGW":
     st.subheader("📅 Kies uw afspraakmoment")
     datum = st.date_input("Selecteer datum", min_value=datetime.date.today())
     
-    if datum.weekday() in [0, 2]: # Maandag en Woensdag
+    if datum.weekday() in [0, 2]:
         tijden = [f"{h:02d}:{m:02d}" for h in range(7, 15) for m in [0, 15, 30, 45] if "07:00" <= f"{h:02d}:{m:02d}" <= "14:45"]
         res = supabase.table("aanvragen").select("afspraak_tijd").eq("afspraak_datum", str(datum)).execute()
         bezet = [r['afspraak_tijd'] for r in res.data] if res.data else []
@@ -136,10 +135,8 @@ if menu == "Registratie DGW":
                         "status": "In behandeling", "bericht": bericht
                     }).execute()
                     
-                    # Mail naar cliënt
                     stuur_mail(email, "Bevestiging Registratie DGW", f"Geachte {vnaam},\n\nUw afspraak op {datum} om {st.session_state.selected_time} is ontvangen.")
                     
-                    # Mail naar medewerker met ALLE details en documenten
                     details = f"Nieuwe Registratie:\nNaam: {vnaam} {anaam}\nID: {id_nr}\nLAD: {lad_nr}\nTel: {tel}\n\nBericht:\n{bericht}"
                     stuur_mail(st.secrets["EMAIL_USER"], f"NIEUWE REGISTRATIE: {vnaam} {anaam}", details, bestanden=uploaded_files)
                     
@@ -149,7 +146,6 @@ if menu == "Registratie DGW":
                 else: st.error("Vul alle verplichte velden in.")
     else: st.error("⚠️ Afspraken uitsluitend op Maandag en Woensdag.")
 
-# --- MEDEWERKER PORTAAL ---
 elif menu == "Medewerker Portaal":
     st.header("📋 Beheer Registraties")
     res = supabase.table("aanvragen").select("*").order('created_at', desc=True).execute()
@@ -183,7 +179,6 @@ elif menu == "Medewerker Portaal":
             st.success("✅ Bijgewerkt!")
             st.rerun()
 
-# --- AGENDA OVERZICHT ---
 elif menu == "Agenda Overzicht":
     st.header("📅 Interactieve Agenda")
     res = supabase.table("aanvragen").select("*").execute()
@@ -204,7 +199,6 @@ elif menu == "Agenda Overzicht":
             for _, r in dag_data.iterrows():
                 st.markdown(f'<div class="status-card"><b>🕒 {r["afspraak_tijd"]}</b> | {r["voornaam"]} {r["achternaam"]}<br><b>Status: {r["status"]}</b><br>Toelichting: {r.get("medewerker_toelichting", "")}</div>', unsafe_allow_html=True)
 
-# --- RAPPORTAGES ---
 elif menu == "Rapportages":
     st.header("📊 Statistieken & Historie")
     res = supabase.table("aanvragen").select("*").order('created_at', desc=True).execute()
@@ -212,10 +206,16 @@ elif menu == "Rapportages":
         df = pd.DataFrame(res.data)
         st.subheader("Status Verdeling")
         st.bar_chart(df['status'].value_counts())
-        st.subheader("Volledig Overzicht (inclusief toelichtingen)")
+        st.subheader("Volledig Overzicht")
         st.dataframe(df[['id', 'voornaam', 'achternaam', 'status', 'medewerker_toelichting', 'afspraak_datum']])
 
-# --- ADMIN ---
 elif menu == "Admin Instellingen":
     st.header("⚙️ Admin")
-    with st.
+    with st.expander("Nieuwe Medewerker"):
+        u = st.text_input("Naam")
+        p = st.text_input("Wachtwoord", type="password")
+        r = st.selectbox("Rol", ["Medewerker", "Admin"])
+        if st.button("Toevoegen"):
+            supabase.table("medewerkers").insert({"gebruikersnaam": u, "wachtwoord": p, "rol": r}).execute()
+            st.success(f"Medewerker {u} toegevoegd!")
+            st.rerun()
