@@ -13,27 +13,64 @@ st.set_page_config(page_title="Registratie Dienst Grondzaken Wanica Centrum", la
 # Verbinding met Supabase
 supabase = create_client(st.secrets["SUPABASE_URL"], st.secrets["SUPABASE_KEY"])
 
-# Styling
-st.markdown("""
-    <style>
-    .stButton>button { background-color: #2e7d32 !important; color: white !important; border-radius: 5px; }
-    .main { background-color: #f8f9fa; }
-    </style>
-    """, unsafe_allow_html=True)
-
-# --- HELPER FUNCTIES ---
-def stuur_mail(ontvanger, onderwerp, inhoud):
+# --- VERBETERDE PROFESSIONELE MAIL FUNCTIE ---
+def stuur_mail(ontvanger, onderwerp, html_inhoud):
     try:
         msg = MIMEMultipart()
         msg['Subject'] = onderwerp
-        msg['From'] = f"DGW Centrum <{st.secrets['EMAIL_USER']}>"
+        msg['From'] = f"DGW Wanica Centrum <{st.secrets['EMAIL_USER']}>"
         msg['To'] = ontvanger
-        msg.attach(MIMEText(inhoud + "\n\n---\nDistrictscommissariaat Wanica-Centrum", 'plain'))
+        
+        # We versturen de mail als HTML voor een professionele look
+        msg.attach(MIMEText(html_inhoud, 'html'))
+        
         with smtplib.SMTP_SSL('smtp.gmail.com', 465) as server:
             server.login(st.secrets["EMAIL_USER"], st.secrets["EMAIL_PASS"])
             server.send_message(msg)
     except Exception as e:
-        st.error(f"Mail fout: {e}")
+        st.error(f"E-mail kon niet verzonden worden: {e}")
+
+# --- MAIL TEMPLATES ---
+def template_client(naam, status, toelichting, stappen):
+    return f"""
+    <html>
+        <body style="font-family: Arial, sans-serif; color: #333;">
+            <div style="background-color: #2e7d32; padding: 20px; color: white; text-align: center;">
+                <h2>Dienst Grondzaken Wanica Centrum</h2>
+            </div>
+            <div style="padding: 20px; border: 1px solid #ddd;">
+                <p>Geachte heer/mevrouw <b>{naam}</b>,</p>
+                <p>Hierbij ontvangt u een update betreffende uw registratie bij de Dienst Grondzaken.</p>
+                <p><b>Huidige Status:</b> <span style="color: #2e7d32; font-weight: bold;">{status}</span></p>
+                <hr>
+                <p><b>Toelichting:</b><br>{toelichting if toelichting else 'Uw dossier is in behandeling.'}</p>
+                <p><b>Volgende stappen:</b><br>{stappen if stappen else 'Geen verdere actie vereist op dit moment.'}</p>
+                <hr>
+                <p style="font-size: 12px; color: #777;">Dit is een automatisch gegenereerd bericht. Voor vragen kunt u contact opnemen met het districtscommissariaat.</p>
+            </div>
+        </body>
+    </html>
+    """
+
+def template_medewerker(medewerker, client_naam, id_nummer, status, verslag):
+    return f"""
+    <html>
+        <body style="font-family: Arial, sans-serif; color: #333;">
+            <div style="background-color: #444; padding: 15px; color: white;">
+                <h3>Interne Dossier Update Notificatie</h3>
+            </div>
+            <div style="padding: 20px; border: 1px solid #ddd; background-color: #f9f9f9;">
+                <p><b>Medewerker:</b> {medewerker}</p>
+                <p><b>Cliënt:</b> {client_naam} (ID: {id_nummer})</p>
+                <p><b>Nieuwe Status:</b> {status}</p>
+                <hr>
+                <p><b>Intern Verslag / Notities:</b><br><i>{verslag}</i></p>
+                <hr>
+                <p style="font-size: 11px;">Geregistreerd op: {datetime.datetime.now().strftime('%d-%m-%Y %H:%M')}</p>
+            </div>
+        </body>
+    </html>
+    """
 
 # --- 2. AUTHENTICATIE ---
 if 'logged_in' not in st.session_state:
@@ -65,7 +102,6 @@ menu = st.sidebar.radio("Hoofdmenu", menu_options)
 
 if menu == "Nieuwe Aanvraag DGW":
     st.header("📝 Registratie Dienst Grondzaken Wanica Centrum")
-    # ... (Bestaande code voor aanvragen blijft gelijk)
     col1, col2 = st.columns(2)
     with col1:
         vnaam = st.text_input("Voornaam *")
@@ -127,18 +163,36 @@ elif menu == "Beheer Registraties":
                 st.rerun()
 
         with st.form("update_dossier"):
+            st.subheader("Dossier & Rapportage Bijwerken")
             stat = st.selectbox("Status", ["Bevestigd", "In behandeling", "Afgehandeld", "Geannuleerd", "Verwezen"], index=0)
             beh_optie = st.selectbox("Afgehandeld?", ["Nee", "Ja"], index=1 if reg.get('behandeld') else 0)
+            stappen = st.text_area("Volgende stappen voor cliënt", value=str(reg.get('volgende_stappen') or ""))
             verslag = st.text_area("Intern verslag", value=str(reg.get('intern_verslag') or ""))
-            mail_tekst = st.text_area("Update mail naar cliënt")
+            mail_tekst = st.text_area("Persoonlijke toelichting voor de cliënt (in de mail)")
             
-            if st.form_submit_button("Wijzigingen Opslaan"):
+            if st.form_submit_button("Wijzigingen Opslaan & Mails Verzenden"):
                 is_beh = (beh_optie == "Ja")
-                supabase.table("aanvragen").update({"status": stat, "behandeld": is_beh, "intern_verslag": verslag}).eq("id", sel_id).execute()
-                if mail_tekst:
-                    stuur_mail(reg['email'], "Update Grondzaken", mail_tekst)
-                st.success("Bijgewerkt.")
-                st.rerun()
+                try:
+                    supabase.table("aanvragen").update({
+                        "status": stat, 
+                        "behandeld": is_beh, 
+                        "volgende_stappen": stappen,
+                        "intern_verslag": verslag,
+                        "medewerker_toelichting": mail_tekst
+                    }).eq("id", sel_id).execute()
+                    
+                    # 1. Stuur professionele mail naar Cliënt
+                    html_client = template_client(f"{reg['voornaam']} {reg['achternaam']}", stat, mail_tekst, stappen)
+                    stuur_mail(reg['email'], "Update Grondzaken Dossier", html_client)
+                    
+                    # 2. Stuur professionele mail naar Medewerker
+                    html_med = template_medewerker(st.session_state.user, f"{reg['voornaam']} {reg['achternaam']}", reg['id_nummer'], stat, verslag)
+                    stuur_mail(st.secrets['EMAIL_USER'], f"Interne Update: {reg['achternaam']}", html_med)
+                    
+                    st.success("✅ Dossier bijgewerkt en professionele e-mails verzonden.")
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Fout: {e}")
 
 elif menu == "Rapportages":
     st.header("📊 Management Rapportages")
@@ -155,51 +209,30 @@ elif menu == "Agenda":
         events = [{"title": f"{r['voornaam']} {r['achternaam']}", "start": r['afspraak_datum']} for r in res.data]
         calendar(events=events)
 
-# --- NIEUWE UITGEBREIDE SYSTEEMBEHEER ---
 elif menu == "Systeembeheer":
     st.header("⚙️ Beheer Medewerkers")
-    
-    # Haal huidige medewerkers op
     res_m = supabase.table("medewerkers").select("*").execute()
     medewerkers_df = pd.DataFrame(res_m.data) if res_m.data else pd.DataFrame()
 
-    # 1. Medewerker Toevoegen
     with st.expander("➕ Nieuwe Medewerker Toevoegen"):
         with st.form("new_user_form"):
             new_u = st.text_input("Gebruikersnaam")
             new_p = st.text_input("Wachtwoord", type="password")
             new_r = st.selectbox("Rol", ["Medewerker", "Admin"])
             if st.form_submit_button("Account Aanmaken"):
-                if new_u and new_p:
-                    supabase.table("medewerkers").insert({"gebruikersnaam": new_u, "wachtwoord": new_p, "rol": new_r}).execute()
-                    st.success(f"Medewerker {new_u} toegevoegd!")
-                    st.rerun()
-                else:
-                    st.error("Vul alle velden in.")
+                supabase.table("medewerkers").insert({"gebruikersnaam": new_u, "wachtwoord": new_p, "rol": new_r}).execute()
+                st.success("Medewerker toegevoegd!")
+                st.rerun()
 
-    # 2. Medewerkers beheren (Wachtwoord wijzigen of Verwijderen)
     if not medewerkers_df.empty:
-        st.subheader("👥 Bestaande Accounts")
         for index, row in medewerkers_df.iterrows():
-            with st.container():
-                c1, c2, c3 = st.columns([2, 2, 1])
-                c1.write(f"**{row['gebruikersnaam']}** ({row['rol']})")
-                
-                # Wachtwoord wijzigen
-                with c2.popover("🔑 Wachtwoord wijzigen"):
-                    new_pass = st.text_input(f"Nieuw wachtwoord voor {row['gebruikersnaam']}", type="password", key=f"p_{row['id']}")
-                    if st.button("Opslaan", key=f"s_{row['id']}"):
-                        supabase.table("medewerkers").update({"wachtwoord": new_pass}).eq("id", row['id']).execute()
-                        st.success("Wachtwoord gewijzigd.")
-                
-                # Verwijderen
-                if c3.button("🗑️ Verwijder", key=f"d_{row['id']}"):
-                    if row['gebruikersnaam'] == st.session_state.user:
-                        st.error("Je kunt je eigen account niet verwijderen terwijl je bent ingelogd.")
-                    else:
-                        supabase.table("medewerkers").delete().eq("id", row['id']).execute()
-                        st.success("Account verwijderd.")
-                        st.rerun()
-                st.divider()
-    else:
-        st.info("Geen medewerkers gevonden.")
+            c1, c2, c3 = st.columns([2, 2, 1])
+            c1.write(f"**{row['gebruikersnaam']}**")
+            with c2.popover("🔑 Wachtwoord wijzigen"):
+                new_pass = st.text_input("Nieuw wachtwoord", type="password", key=f"p_{row['id']}")
+                if st.button("Opslaan", key=f"s_{row['id']}"):
+                    supabase.table("medewerkers").update({"wachtwoord": new_pass}).eq("id", row['id']).execute()
+                    st.success("Gewijzigd.")
+            if c3.button("🗑️", key=f"d_{row['id']}"):
+                supabase.table("medewerkers").delete().eq("id", row['id']).execute()
+                st.rerun()
