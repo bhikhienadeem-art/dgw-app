@@ -9,18 +9,18 @@ from email.mime.application import MIMEApplication
 import os
 
 # --- 1. CONFIGURATIE & VISUELE IDENTITEIT ---
-st.set_page_config(page_title="DGW Wanica Centrum - Officiële Registratie", layout="wide")
+st.set_page_config(page_title="Dienst Grondzaken - Officiële Registratie", layout="wide")
 
 # Verbinding met Supabase
 supabase = create_client(st.secrets["SUPABASE_URL"], st.secrets["SUPABASE_KEY"])
 
-# Sidebar met Logo en Officiële Benaming
+# Sidebar met Logo en Nieuwe Benaming (Dienst Grondzaken)
 with st.sidebar:
     logo_path = "orgineel logo Centrum.png"
     if os.path.exists(logo_path):
         st.image(logo_path, use_container_width=True) # cite: image_650ce2.png
     
-    st.markdown("<h2 style='text-align: center;'>DGW Wanica Centrum</h2>", unsafe_allow_html=True) # cite: image_6513c4.png
+    st.markdown("<h2 style='text-align: center;'>Dienst Grondzaken</h2>", unsafe_allow_html=True) # cite: image_6420a0.png
     st.divider()
 
 # --- COMMUNICATIE SERVICE (E-MAIL) ---
@@ -28,7 +28,7 @@ def stuur_notificatie(ontvanger, onderwerp, html_inhoud, bijlagen=None):
     try:
         msg = MIMEMultipart()
         msg['Subject'] = onderwerp
-        msg['From'] = f"DGW Wanica Centrum <{st.secrets['EMAIL_USER']}>"
+        msg['From'] = f"Dienst Grondzaken <{st.secrets['EMAIL_USER']}>"
         msg['To'] = ontvanger
         msg.attach(MIMEText(html_inhoud, 'html'))
         
@@ -50,10 +50,10 @@ if 'logged_in' not in st.session_state:
     st.session_state.update({'logged_in': False, 'role': None, 'user': None})
 
 if not st.session_state.logged_in:
-    st.sidebar.subheader("🔐 Medewerker Portaal")
+    st.sidebar.subheader("🔐 Medewerker Portaal") # cite: image_6513c4.png
     res_m = supabase.table("medewerkers").select("*").execute()
     user_list = [u['gebruikersnaam'] for u in res_m.data] if res_m.data else []
-    u_sel = st.sidebar.selectbox("Gebruikersnaam", ["---"] + user_list) # cite: image_6513c4.png
+    u_sel = st.sidebar.selectbox("Gebruikersnaam", ["---"] + user_list)
     p_inp = st.sidebar.text_input("Wachtwoord", type="password")
     if st.sidebar.button("Aanmelden"):
         user_data = next((u for u in res_m.data if u['gebruikersnaam'] == u_sel), None)
@@ -91,23 +91,21 @@ if menu == "📝 Nieuwe Registratie":
     geuploade_bestanden = st.file_uploader("Relevante documentatie uploaden", accept_multiple_files=True)
     
     st.divider()
-    # Professionele formulering voor afspraken
     st.markdown("### Afspraak inplannen")
     st.info("Indien u een afspraak wenst, gelieve een datum en tijdstip te selecteren (beschikbaar op maandag en woensdag).") # cite: image_642ae8.png
     
-    datum = st.date_input("Voorkeursdatum", min_value=datetime.date.today()) # cite: image_6432a9.png
+    datum = st.date_input("Voorkeursdatum", min_value=datetime.date.today())
     
-    if datum.weekday() not in [0, 2]: # 0 = Maandag, 2 = Woensdag
+    if datum.weekday() not in [0, 2]: # Alleen Maandag (0) en Woensdag (2)
         st.warning("Let op: Afspraken op locatie zijn uitsluitend mogelijk op maandag en woensdag.")
     else:
         st.subheader("Beschikbare tijdstippen")
         tijdsblokken = [f"{h:02d}:{m:02d}" for h in range(8, 15) for m in (0, 15, 30, 45) if not (h == 14 and m > 30)]
         
-        # Ophalen van reeds bezette tijden
         res_t = supabase.table("aanvragen").select("afspraak_tijd").eq("afspraak_datum", str(datum)).execute()
         bezet = [r['afspraak_tijd'] for r in res_t.data] if res_t.data else []
         
-        # Weergave van tijdslots als GEKLEURDE KNOPPEN (image_651b69.png stijl)
+        # Gekleurde tijdslots als knoppen (image_651b69.png stijl)
         cols = st.columns(6)
         for i, slot in enumerate(tijdsblokken):
             is_bezet = slot in bezet
@@ -131,21 +129,19 @@ if menu == "📝 Nieuwe Registratie":
                     "afspraak_tijd": st.session_state.geselecteerde_tijd, "status": "In behandeling", "bericht": bericht
                 }).execute()
                 
-                # Interne notificatie mail (image_65757b.png stijl)
+                # E-mail notificatie (image_65757b.png stijl)
                 html_msg = f"""
                 <div style='font-family: Arial, sans-serif; border: 1px solid #ddd; padding: 20px;'>
                     <h2 style='color: #2c3e50;'>Nieuwe Registratie Ontvangen</h2>
-                    <p>Er is een nieuwe aanvraag ingediend door: <b>{vnaam} {anaam}</b></p>
+                    <p>Cliënt: <b>{vnaam} {anaam}</b></p>
                     <p><b>ID-Nummer:</b> {id_nr}</p>
-                    <p><b>Geplande afspraak:</b> {datum} om {st.session_state.geselecteerde_tijd}</p>
+                    <p><b>Afspraak:</b> {datum} om {st.session_state.geselecteerde_tijd}</p>
                     <p><b>Omschrijving:</b><br>{bericht}</p>
-                    <hr>
-                    <p style='font-size: 0.9em; color: #7f8c8d;'>Log in op het systeem om de volledige details te bekijken.</p>
                 </div>
                 """
                 stuur_notificatie(st.secrets['EMAIL_USER'], f"Nieuwe Registratie: {anaam}", html_msg, geuploade_bestanden)
                 
-                st.success("Uw registratie is succesvol verwerkt. U ontvangt spoedig bericht.")
+                st.success("Uw registratie is succesvol verwerkt.")
                 del st.session_state.geselecteerde_tijd
             except Exception as e:
                 st.error(f"Fout bij opslaan: {e}")
