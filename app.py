@@ -11,7 +11,6 @@ from streamlit_calendar import calendar
 # --- 1. CONFIGURATIE & STYLING ---
 st.set_page_config(page_title="Dienst Grondzaken Wanica Centrum", layout="wide")
 
-# Logo laden
 try:
     st.sidebar.image("orgineel logo Centrum.png", use_container_width=True)
 except:
@@ -19,11 +18,9 @@ except:
 
 st.markdown("""
     <style>
-    .tijd-knop { display: inline-block; padding: 10px; margin: 5px; border-radius: 5px; text-align: center; font-weight: bold; width: 100px; border: 1px solid #ddd; }
+    .tijd-knop { display: inline-block; padding: 10px; margin: 5px; border-radius: 5px; text-align: center; font-weight: bold; width: 80px; border: 1px solid #ddd; }
     .vrij { background-color: #e8f5e9; color: #2e7d32; cursor: pointer; }
     .bezet { background-color: #ffebee; color: #c62828; cursor: not-allowed; }
-    .geselecteerd { background-color: #2e7d32; color: white; }
-    .status-card { padding: 20px; border-radius: 10px; border-left: 8px solid #2e7d32; background-color: #ffffff; margin-bottom: 15px; border: 1px solid #ddd; }
     .stButton>button { background-color: #2e7d32 !important; color: white !important; }
     </style>
     """, unsafe_allow_html=True)
@@ -31,7 +28,7 @@ st.markdown("""
 # Verbinding met Supabase
 supabase = create_client(st.secrets["SUPABASE_URL"], st.secrets["SUPABASE_KEY"])
 
-# --- HULPFUNCTIES ---
+# --- MAIL FUNCTIE ---
 def stuur_mail(ontvanger, onderwerp, inhoud):
     try:
         msg = MIMEMultipart()
@@ -87,24 +84,27 @@ if menu == "Nieuwe Aanvraag DGW":
         lad_nr = st.text_input("LAD Nummer")
     
     bericht = st.text_area("Omschrijving van uw verzoek *")
+    uploaded_files = st.file_uploader("Documenten uploaden", accept_multiple_files=True)
     datum = st.date_input("Kies een datum", min_value=datetime.date.today())
     
-    # --- AFSPRAAK TIJDEN LOGICA ---
-    st.subheader("⏰ Beschikbare Tijden")
-    tijdsblokken = ["08:00", "08:30", "09:00", "09:30", "10:00", "10:30", "11:00", "11:30", "12:00", "12:30"]
+    # --- TIJDEN GENEREREN (08:00 - 14:30, elke 15 min) ---
+    st.subheader("⏰ Beschikbare Tijden (Kwartier per afspraak)")
+    tijdsblokken = []
+    start = datetime.datetime.strptime("08:00", "%H:%M")
+    eind = datetime.datetime.strptime("14:30", "%H:%M")
+    while start <= eind:
+        tijdsblokken.append(start.strftime("%H:%M"))
+        start += datetime.timedelta(minutes=15)
     
-    # Haal bezette tijden op voor gekozen datum
     res_t = supabase.table("aanvragen").select("afspraak_tijd").eq("afspraak_datum", str(datum)).execute()
     bezette_tijden = [r['afspraak_tijd'] for r in res_t.data] if res_t.data else []
     
     gekozen_tijd = None
-    cols = st.columns(5)
+    cols = st.columns(6)
     for i, tijd in enumerate(tijdsblokken):
         is_bezet = tijd in bezette_tijden
-        label = "🚫 Bezet" if is_bezet else tijd
-        stijl = "bezet" if is_bezet else "vrij"
-        
-        if cols[i % 5].button(label, key=f"t_{tijd}", disabled=is_bezet):
+        label = f"🚫 {tijd}" if is_bezet else tijd
+        if cols[i % 6].button(label, key=f"t_{tijd}", disabled=is_bezet):
             st.session_state.sel_tijd = tijd
             
     if 'sel_tijd' in st.session_state:
@@ -118,10 +118,10 @@ if menu == "Nieuwe Aanvraag DGW":
                 "telefoon": tel, "lad_nummer": lad_nr, "afspraak_datum": str(datum),
                 "afspraak_tijd": gekozen_tijd, "status": "In behandeling", "bericht": bericht
             }).execute()
-            st.success("✅ Succesvol geregistreerd bij DGW Centrum!")
-            del st.session_state.sel_tijd
+            st.success("✅ Succesvol geregistreerd!")
+            if 'sel_tijd' in st.session_state: del st.session_state.sel_tijd
         else:
-            st.error("Vul alle verplichte velden en kies een tijdstip.")
+            st.error("Vul alle velden in en kies een tijdstip.")
 
 elif menu == "Beheer Registraties":
     st.header("📋 Beheer Registraties DGW Centrum")
@@ -133,43 +133,36 @@ elif menu == "Beheer Registraties":
         sel_id = st.selectbox("Selecteer dossier ID", df['id'].tolist())
         reg = next(item for item in res.data if item['id'] == sel_id)
         
-        with st.container():
-            st.markdown(f"**Dossier van:** {reg['voornaam']} {reg['achternaam']} | **ID:** {reg['id_nummer']}")
-            col_a, col_b = st.columns(2)
-            with col_a:
-                n_status = st.selectbox("Status", ["Bevestigd", "In behandeling", "Afgehandeld", "Geannuleerd", "Verwezen"], index=0)
-                behandeld = st.selectbox("Afgehandeld?", ["Nee", "Ja"], index=1 if reg.get('behandeld') == "Ja" else 0)
-            with col_b:
-                stappen = st.text_area("Volgende stappen voor cliënt", value=reg.get('volgende_stappen', ""))
-            
-            verslag = st.text_area("Intern verslag", value=reg.get('intern_verslag', ""))
-            mail_bericht = st.text_area("Extra toelichting voor de cliënt", value=reg.get('medewerker_toelichting', ""))
-            
-            if st.button("Update Opslaan"):
-                supabase.table("aanvragen").update({
-                    "status": n_status, "behandeld": behandeld,
-                    "volgende_stappen": stappen, "intern_verslag": verslag,
-                    "medewerker_toelichting": mail_bericht
-                }).eq("id", sel_id).execute()
-                
-                if mail_bericht:
-                    stuur_mail(reg['email'], "Update DGW Centrum", f"Status: {n_status}\n\nToelichting: {mail_bericht}")
-                st.success("Dossier bijgewerkt.")
-                st.rerun()
+        st.markdown(f"**Dossier:** {reg['voornaam']} {reg['achternaam']}")
+        col_a, col_b = st.columns(2)
+        with col_a:
+            n_status = st.selectbox("Status", ["Bevestigd", "In behandeling", "Afgehandeld", "Geannuleerd", "Verwezen"], index=0)
+            behandeld = st.selectbox("Afgehandeld?", ["Nee", "Ja"], index=1 if reg.get('behandeld') == "Ja" else 0)
+        with col_b:
+            stappen = st.text_area("Volgende stappen", value=reg.get('volgende_stappen', ""))
+        
+        verslag = st.text_area("Intern verslag", value=reg.get('intern_verslag', ""))
+        mail_bericht = st.text_area("Toelichting voor cliënt", value=reg.get('medewerker_toelichting', ""))
+        
+        if st.button("Update Opslaan"):
+            supabase.table("aanvragen").update({
+                "status": n_status, "behandeld": behandeld,
+                "volgende_stappen": stappen, "intern_verslag": verslag,
+                "medewerker_toelichting": mail_bericht
+            }).eq("id", sel_id).execute()
+            if mail_bericht:
+                stuur_mail(reg['email'], "Update DGW Centrum", mail_bericht)
+            st.success("Opgeslagen.")
+            st.rerun()
 
 elif menu == "Rapportages":
-    st.header("📊 Statistieken & Rapportages")
+    st.header("📊 Rapportages")
     res = supabase.table("aanvragen").select("*").execute()
     if res.data:
         df = pd.DataFrame(res.data)
-        st.write("Aantal aanvragen per status:")
-        st.table(df['status'].value_counts())
-        
-        st.write("---")
-        sel_rep = st.selectbox("Bekijk volledig rapport van cliënt", [f"{r['id']} - {r['voornaam']} {r['achternaam']}" for r in res.data])
-        rid = int(sel_rep.split(" - ")[0])
-        row = next(item for item in res.data if item['id'] == rid)
-        st.json(row)
+        st.write("Overzicht per status:")
+        st.bar_chart(df['status'].value_counts())
+        st.dataframe(df[['id', 'voornaam', 'achternaam', 'status', 'behandeld', 'medewerker_toelichting']])
 
 elif menu == "Agenda":
     st.header("📅 Afsprakenoverzicht")
@@ -179,12 +172,12 @@ elif menu == "Agenda":
         calendar(events=events, options={"initialView": "dayGridMonth"})
 
 elif menu == "Systeembeheer":
-    st.header("⚙️ Admin Instellingen")
-    with st.expander("➕ Medewerker Toevoegen"):
+    st.header("⚙️ Admin")
+    with st.expander("➕ Nieuwe Medewerker"):
         with st.form("add_user"):
             new_u = st.text_input("Gebruikersnaam")
             new_p = st.text_input("Wachtwoord", type="password")
             new_r = st.selectbox("Rol", ["Medewerker", "Admin"])
             if st.form_submit_button("Opslaan"):
                 supabase.table("medewerkers").insert({"gebruikersnaam": new_u, "wachtwoord": new_p, "rol": new_r}).execute()
-                st.rerun()
+                st.success("Toegevoegd.")
