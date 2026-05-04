@@ -7,8 +7,8 @@ from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from streamlit_calendar import calendar
 
-# --- 1. INITIALISATIE & TITEL ---
-# De titel is nu aangepast naar de gewenste weergave
+# --- 1. INITIALISATIE ---
+# Titel overal aangepast naar de gewenste weergave
 st.set_page_config(page_title="Registratie Dienst Grondzaken Wanica Centrum", layout="wide")
 
 # Verbinding met Supabase
@@ -57,8 +57,7 @@ menu = st.sidebar.radio("Menu", menu_options)
 # --- 4. PAGINA'S ---
 
 if menu == "Nieuwe Aanvraag DGW":
-    # Titel hier ook gecorrigeerd naar de gewenste tekst
-    st.header("📝 Registratie Dienst Grondzaken Wanica Centrum")
+    st.header("📝 Registratie Dienst Grondzaken Wanica Centrum") # Titel fix
     
     col1, col2 = st.columns(2)
     with col1:
@@ -71,11 +70,11 @@ if menu == "Nieuwe Aanvraag DGW":
         lad_nr = st.text_input("LAD Nummer")
     
     bericht = st.text_area("Omschrijving van uw verzoek *")
-    st.file_uploader("Documenten uploaden", accept_multiple_files=True) # Upload hersteld
+    st.file_uploader("Documenten uploaden", accept_multiple_files=True) # Upload knop aanwezig
     
     datum = st.date_input("Kies een datum (Maandag of Woensdag)", min_value=datetime.date.today())
     
-    if datum.weekday() not in [0, 2]: # Alleen Ma (0) en Wo (2)
+    if datum.weekday() not in [0, 2]: # Maandag en Woensdag check
         st.warning("⚠️ Afspraken zijn enkel mogelijk op maandag en woensdag.")
     else:
         st.subheader("⏰ Beschikbare Tijden")
@@ -84,7 +83,7 @@ if menu == "Nieuwe Aanvraag DGW":
         eind = datetime.datetime.strptime("14:30", "%H:%M")
         while start <= eind:
             tijdsblokken.append(start.strftime("%H:%M"))
-            start += datetime.timedelta(minutes=15) # Blokken van 15 min
+            start += datetime.timedelta(minutes=15) # 15 minuten intervallen
         
         res_t = supabase.table("aanvragen").select("afspraak_tijd").eq("afspraak_datum", str(datum)).execute()
         bezet = [r['afspraak_tijd'] for r in res_t.data] if res_t.data else []
@@ -115,30 +114,35 @@ elif menu == "Beheer Registraties":
     res = supabase.table("aanvragen").select("*").order('created_at', desc=True).execute()
     if res.data:
         df = pd.DataFrame(res.data)
-        st.dataframe(df[['id', 'voornaam', 'achternaam', 'status']]) # Overzicht
+        st.dataframe(df[['id', 'voornaam', 'achternaam', 'status']]) # Overzichtstabel
         
         sel_id = st.selectbox("Dossier ID selecteren", df['id'].tolist())
         reg = next(item for item in res.data if item['id'] == sel_id)
         
-        st.subheader(f"Dossier Details: {reg['voornaam']} {reg['achternaam']}")
+        st.subheader(f"Dossier Bewerken: {reg['voornaam']} {reg['achternaam']}")
         
-        # OPLOSSING VOOR API ERROR: Gebruik een formulier en controleer data types
         with st.form("update_form"):
             n_status = st.selectbox("Status", ["Bevestigd", "In behandeling", "Afgehandeld", "Geannuleerd", "Verwezen"], 
                                   index=["Bevestigd", "In behandeling", "Afgehandeld", "Geannuleerd", "Verwezen"].index(reg['status']))
             
-            # Zet 'behandeld' om naar tekst om fouten te voorkomen
-            behandeld_optie = st.selectbox("Dossier volledig afgehandeld?", ["Nee", "Ja"], index=1 if reg.get('behandeld') == "Ja" else 0)
+            # CRUCIALE FIX VOOR BOOLEAN FOUT: 
+            # We tonen tekst, maar slaan True/False op in de database.
+            huidige_waarde = reg.get('behandeld')
+            behandeld_optie = st.selectbox("Dossier volledig afgehandeld?", ["Nee", "Ja"], 
+                                          index=1 if huidige_waarde == True else 0)
             
             stappen = st.text_area("Volgende stappen voor cliënt", value=str(reg.get('volgende_stappen') or ""))
-            verslag = st.text_area("Intern verslag (niet voor cliënt)", value=str(reg.get('intern_verslag') or ""))
-            mail_tekst = st.text_area("Toelichting in e-mail naar cliënt", value=str(reg.get('medewerker_toelichting') or ""))
+            verslag = st.text_area("Intern verslag", value=str(reg.get('intern_verslag') or ""))
+            mail_tekst = st.text_area("Toelichting in e-mail", value=str(reg.get('medewerker_toelichting') or ""))
             
             if st.form_submit_button("Wijzigingen Opslaan"):
+                # Zet de selectie om naar een echte boolean voor de database
+                is_behandeld = True if behandeld_optie == "Ja" else False
+                
                 try:
                     supabase.table("aanvragen").update({
                         "status": n_status,
-                        "behandeld": behandeld_optie,
+                        "behandeld": is_behandeld, # Hier sturen we nu True of False
                         "volgende_stappen": stappen,
                         "intern_verslag": verslag,
                         "medewerker_toelichting": mail_tekst
@@ -162,8 +166,8 @@ elif menu == "Rapportages":
     st.header("📊 Rapportages")
     res = supabase.table("aanvragen").select("*").execute()
     if res.data:
-        # Weergave zoals in image_98d35a.png
-        st.dataframe(pd.DataFrame(res.data)[['id', 'voornaam', 'achternaam', 'status', 'medewerker_toelichting', 'afspraak_datum']])
+        # Overzicht zoals getoond in image_98d35a.png
+        st.dataframe(pd.DataFrame(res.data)[['id', 'voornaam', 'achternaam', 'status', 'afspraak_datum']])
 
 elif menu == "Systeembeheer":
     st.header("⚙️ Systeembeheer")
