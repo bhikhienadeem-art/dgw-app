@@ -30,7 +30,7 @@ st.markdown("""
 # Verbinding met Supabase
 supabase = create_client(st.secrets["SUPABASE_URL"], st.secrets["SUPABASE_KEY"])
 
-# --- VERBETERDE MAIL FUNCTIE ---
+# --- MAIL FUNCTIE ---
 def stuur_mail(ontvanger, onderwerp, inhoud, bestanden=None):
     try:
         msg = MIMEMultipart()
@@ -54,7 +54,7 @@ def stuur_mail(ontvanger, onderwerp, inhoud, bestanden=None):
     except Exception as e:
         st.error(f"Mailfout: {e}")
 
-# --- 2. LOGIN ---
+# --- 2. LOGIN STATUS ---
 if 'logged_in' not in st.session_state:
     st.session_state.logged_in, st.session_state.role, st.session_state.user = False, None, None
 
@@ -88,6 +88,8 @@ else: login()
 menu = st.sidebar.radio("Navigatie", menu_options)
 
 # --- 4. PAGINA'S ---
+
+# --- CLIENT REGISTRATIE ---
 if menu == "Registratie DGW":
     st.header("📝 Registratie Dienst Grondzaken Wanica")
     col1, col2 = st.columns(2)
@@ -102,13 +104,13 @@ if menu == "Registratie DGW":
         lad_nr = st.text_input("LAD Nummer")
     
     bericht = st.text_area("Omschrijving klacht/verzoek *")
-    uploaded_files = st.file_uploader("Documenten uploaden", accept_multiple_files=True)
+    uploaded_files = st.file_uploader("Documenten uploaden (ID, Perceelkaart, etc.)", accept_multiple_files=True)
     
     st.write("---")
     st.subheader("📅 Kies uw afspraakmoment")
     datum = st.date_input("Selecteer datum", min_value=datetime.date.today())
     
-    if datum.weekday() in [0, 2]:
+    if datum.weekday() in [0, 2]: # Maandag en Woensdag
         tijden = [f"{h:02d}:{m:02d}" for h in range(7, 15) for m in [0, 15, 30, 45] if "07:00" <= f"{h:02d}:{m:02d}" <= "14:45"]
         res = supabase.table("aanvragen").select("afspraak_tijd").eq("afspraak_datum", str(datum)).execute()
         bezet = [r['afspraak_tijd'] for r in res.data] if res.data else []
@@ -127,7 +129,6 @@ if menu == "Registratie DGW":
             st.success(f"Gekozen: **{st.session_state.selected_time}**")
             if st.button("Definitief Verzenden"):
                 if all([vnaam, anaam, email, id_nr, bericht]):
-                    # Opslaan
                     supabase.table("aanvragen").insert({
                         "voornaam": vnaam, "achternaam": anaam, "email": email, "id_nummer": id_nr, 
                         "woonadres": woonadres, "telefoon": tel, "lad_nummer": lad_nr, 
@@ -136,72 +137,53 @@ if menu == "Registratie DGW":
                     }).execute()
                     
                     # Mail naar cliënt
-                    client_mail = f"Geachte {vnaam} {anaam},\n\nUw afspraak bij Dienst Grondzaken Wanica op {datum} om {st.session_state.selected_time} is ontvangen en in behandeling."
-                    stuur_mail(email, "Bevestiging Registratie DGW", client_mail)
+                    stuur_mail(email, "Bevestiging Registratie DGW", f"Geachte {vnaam},\n\nUw afspraak op {datum} om {st.session_state.selected_time} is ontvangen.")
                     
-                    # Mail naar medewerker MET ALLE DETAILS EN BIJLAGEN
-                    medewerker_mail = f"""
-Nieuwe Registratie Ontvangen:
------------------------------
-Naam: {vnaam} {anaam}
-ID-Nummer: {id_nr}
-LAD-Nummer: {lad_nr}
-Adres: {woonadres}
-Telefoon: {tel}
-E-mail: {email}
-
-Afspraak: {datum} om {st.session_state.selected_time}
-
-Omschrijving:
-{bericht}
-                    """
-                    stuur_mail(st.secrets["EMAIL_USER"], f"NIEUWE REGISTRATIE: {vnaam} {anaam}", medewerker_mail, bestanden=uploaded_files)
+                    # Mail naar medewerker met ALLE details en documenten
+                    details = f"Nieuwe Registratie:\nNaam: {vnaam} {anaam}\nID: {id_nr}\nLAD: {lad_nr}\nTel: {tel}\n\nBericht:\n{bericht}"
+                    stuur_mail(st.secrets["EMAIL_USER"], f"NIEUWE REGISTRATIE: {vnaam} {anaam}", details, bestanden=uploaded_files)
                     
                     st.success("✅ Registratie succesvol verzonden!")
                     st.balloons()
                     del st.session_state.selected_time
-                else: st.error("Vul alle velden in.")
+                else: st.error("Vul alle verplichte velden in.")
     else: st.error("⚠️ Afspraken uitsluitend op Maandag en Woensdag.")
 
+# --- MEDEWERKER PORTAAL ---
 elif menu == "Medewerker Portaal":
     st.header("📋 Beheer Registraties")
     res = supabase.table("aanvragen").select("*").order('created_at', desc=True).execute()
     if res.data:
         df = pd.DataFrame(res.data)
-        st.dataframe(df[['id', 'voornaam', 'achternaam', 'afspraak_datum', 'afspraak_tijd', 'status']])
+        st.dataframe(df[['id', 'voornaam', 'achternaam', 'afspraak_datum', 'status']])
         
-        sel_id = st.selectbox("Selecteer ID voor alle details en status update", df['id'].tolist())
-        registratie = next(item for item in res.data if item['id'] == sel_id)
+        sel_id = st.selectbox("Selecteer ID voor details en status update", df['id'].tolist())
+        reg = next(item for item in res.data if item['id'] == sel_id)
         
-        # TONEN VAN ALLE DETAILS
         st.markdown(f"""
         <div class="status-card">
-            <h3>Details van {registratie['voornaam']} {registratie['achternaam']}</h3>
-            <p><b>ID-Nummer:</b> {registratie['id_nummer']}</p>
-            <p><b>LAD-Nummer:</b> {registratie.get('lad_nummer', 'N.v.t.')}</p>
-            <p><b>Woonadres:</b> {registratie['woonadres']}</p>
-            <p><b>Telefoon:</b> {registratie['telefoon']}</p>
-            <p><b>E-mail:</b> {registratie['email']}</p>
-            <p><b>Afspraak:</b> {registratie['afspraak_datum']} om {registratie['afspraak_tijd']}</p>
-            <hr>
-            <p><b>Bericht/Klacht:</b><br>{registratie['bericht']}</p>
+            <h3>Details van {reg['voornaam']} {reg['achternaam']}</h3>
+            <p><b>ID / LAD:</b> {reg['id_nummer']} / {reg.get('lad_nummer', 'Nvt')}</p>
+            <p><b>Adres:</b> {reg['woonadres']} | <b>Tel:</b> {reg['telefoon']}</p>
+            <p><b>Bericht:</b> {reg['bericht']}</p>
+            <p><b>Huidige Status:</b> {reg['status']}</p>
         </div>
         """, unsafe_allow_html=True)
         
-        col_st, col_op = st.columns(2)
-        with col_st:
-            n_status = st.selectbox("Nieuwe Status", ["Bevestigd", "In behandeling", "Geannuleerd", "Verwezen"], index=["Bevestigd", "In behandeling", "Geannuleerd", "Verwezen"].index(registratie['status']))
-        with col_op:
-            toelichting = st.text_area("Extra toelichting voor de cliënt (optioneel)")
+        n_status = st.selectbox("Nieuwe Status", ["Bevestigd", "In behandeling", "Geannuleerd", "Verwezen"])
+        toelichting = st.text_area("Toelichting voor cliënt en archief")
+        
+        if st.button("Update & Mailen"):
+            supabase.table("aanvragen").update({"status": n_status, "medewerker_toelichting": toelichting}).eq("id", sel_id).execute()
             
-        if st.button("Status Bijwerken & Cliënt Mailen"):
-            supabase.table("aanvragen").update({"status": n_status}).eq("id", sel_id).execute()
-            update_mail = f"De status van uw registratie (ID: {sel_id}) is gewijzigd naar: {n_status}."
-            if toelichting: update_mail += f"\n\nToelichting van medewerker:\n{toelichting}"
-            stuur_mail(registratie['email'], f"Update Registratie DGW: {n_status}", update_mail)
-            st.success("✅ Status bijgewerkt!")
+            mail_tekst = f"Update Registratie DGW:\nStatus: {n_status}\nToelichting: {toelichting}"
+            stuur_mail(reg['email'], f"Update DGW: {n_status}", mail_tekst)
+            stuur_mail(st.secrets["EMAIL_USER"], f"ARCHIEF UPDATE: {sel_id}", f"Status gewijzigd door {st.session_state.user}\n\n" + mail_tekst)
+            
+            st.success("✅ Bijgewerkt!")
             st.rerun()
 
+# --- AGENDA OVERZICHT ---
 elif menu == "Agenda Overzicht":
     st.header("📅 Interactieve Agenda")
     res = supabase.table("aanvragen").select("*").execute()
@@ -220,20 +202,20 @@ elif menu == "Agenda Overzicht":
             df = pd.DataFrame(res.data)
             dag_data = df[df['afspraak_datum'] == clicked_date].sort_values('afspraak_tijd')
             for _, r in dag_data.iterrows():
-                st.markdown(f'<div class="status-card"><b>🕒 {r["afspraak_tijd"]}</b> | {r["voornaam"]} {r["achternaam"]}<br>📞 {r["telefoon"]} | 🆔 {r["id_nummer"]}<br><b>Status: {r["status"]}</b><br>📄 {r["bericht"]}</div>', unsafe_allow_html=True)
+                st.markdown(f'<div class="status-card"><b>🕒 {r["afspraak_tijd"]}</b> | {r["voornaam"]} {r["achternaam"]}<br><b>Status: {r["status"]}</b><br>Toelichting: {r.get("medewerker_toelichting", "")}</div>', unsafe_allow_html=True)
 
+# --- RAPPORTAGES ---
 elif menu == "Rapportages":
-    st.header("📊 Statistieken")
-    res = supabase.table("aanvragen").select("*").execute()
+    st.header("📊 Statistieken & Historie")
+    res = supabase.table("aanvragen").select("*").order('created_at', desc=True).execute()
     if res.data:
         df = pd.DataFrame(res.data)
+        st.subheader("Status Verdeling")
         st.bar_chart(df['status'].value_counts())
-        st.dataframe(df)
+        st.subheader("Volledig Overzicht (inclusief toelichtingen)")
+        st.dataframe(df[['id', 'voornaam', 'achternaam', 'status', 'medewerker_toelichting', 'afspraak_datum']])
 
+# --- ADMIN ---
 elif menu == "Admin Instellingen":
     st.header("⚙️ Admin")
-    with st.expander("Nieuwe Medewerker"):
-        u, p, r = st.text_input("Naam"), st.text_input("Wachtwoord"), st.selectbox("Rol", ["Medewerker", "Admin"])
-        if st.button("Toevoegen"):
-            supabase.table("medewerkers").insert({"gebruikersnaam": u, "wachtwoord": p, "rol": r}).execute()
-            st.rerun()
+    with st.
