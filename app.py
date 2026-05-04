@@ -160,12 +160,26 @@ elif menu == "Medewerker Portaal":
         sel_id = st.selectbox("Selecteer een dossier ID voor bewerking", df['id'].tolist())
         reg = next(item for item in res.data if item['id'] == sel_id)
         
+        # UITGEBREIDE DETAILS VOOR DE MEDEWERKER
         st.markdown(f"""
         <div class="status-card">
             <h3>Dossier Details: {reg['voornaam']} {reg['achternaam']}</h3>
-            <p><b>ID / LAD:</b> {reg['id_nummer']} / {reg.get('lad_nummer', 'Nvt')}</p>
-            <p><b>Bericht:</b> {reg['bericht']}</p>
-            <p><b>Huidige Status:</b> {reg['status']}</p>
+            <div style="display: flex; justify-content: space-between;">
+                <div style="flex: 1;">
+                    <p><b>📅 Afspraak datum:</b> {reg['afspraak_datum']}</p>
+                    <p><b>🕒 Afspraak tijd:</b> {reg['afspraak_tijd']}</p>
+                    <p><b>🆔 ID-Nummer:</b> {reg['id_nummer']}</p>
+                    <p><b>📄 LAD-Nummer:</b> {reg.get('lad_nummer', 'Niet opgegeven')}</p>
+                </div>
+                <div style="flex: 1;">
+                    <p><b>📞 Telefoon:</b> {reg['telefoon']}</p>
+                    <p><b>📧 E-mail:</b> {reg['email']}</p>
+                    <p><b>🏠 Woonadres:</b> {reg['woonadres']}</p>
+                    <p><b>🚦 Huidige Status:</b> {reg['status']}</p>
+                </div>
+            </div>
+            <hr>
+            <p><b>📝 Omschrijving verzoek:</b><br>{reg['bericht']}</p>
         </div>
         """, unsafe_allow_html=True)
         
