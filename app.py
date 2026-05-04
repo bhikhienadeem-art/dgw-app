@@ -8,15 +8,17 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.application import MIMEApplication
 from streamlit_calendar import calendar
 
-# --- 1. CONFIGURATIE & LOGO ---
+# --- 1. CONFIGURATIE & TITEL ---
 st.set_page_config(page_title="Registratie Dienst Grondzaken Wanica Centrum", layout="wide")
-
-# Logo toevoegen in de zijbalk
-st.sidebar.image("https://upload.wikimedia.org/wikipedia/commons/thumb/1/12/Coat_of_arms_of_Suriname.svg/1200px-Coat_of_arms_of_Suriname.svg.png", width=100)
-st.sidebar.title("DGW Wanica Centrum")
 
 # Verbinding met Supabase
 supabase = create_client(st.secrets["SUPABASE_URL"], st.secrets["SUPABASE_KEY"])
+
+# --- ZIJKANT: LOGO & LOGIN ---
+# Gebruik van een betrouwbare URL voor het wapen van Suriname
+LOGO_URL = "https://upload.wikimedia.org/wikipedia/commons/thumb/1/12/Coat_of_arms_of_Suriname.svg/250px-Coat_of_arms_of_Suriname.svg.png"
+st.sidebar.image(LOGO_URL, width=120)
+st.sidebar.markdown("### DGW Wanica Centrum")
 
 # --- MAIL FUNCTIE ---
 def stuur_mail_met_bijlagen(ontvanger, onderwerp, html_inhoud, bestanden=None):
@@ -86,40 +88,37 @@ if menu == "📝 Nieuwe Aanvraag DGW":
     
     datum = st.date_input("Kies een datum", min_value=datetime.date.today())
     
-    # Check voor Maandag (0) of Woensdag (2)
+    # Alleen Maandag en Woensdag
     if datum.weekday() not in [0, 2]:
-        st.warning("⚠️ Let op: Afspraken zijn alleen mogelijk op maandag en woensdag.")
+        st.warning("⚠️ Afspraken zijn enkel mogelijk op maandag en woensdag.")
     else:
-        st.subheader("⏰ Beschikbare Tijden (8:00 - 14:30)")
+        st.subheader("⏰ Beschikbare Tijden")
         tijdsblokken = [f"{h:02d}:{m:02d}" for h in range(8, 15) for m in (0, 15, 30, 45) if not (h == 14 and m > 30)]
-        
-        # Check bezette tijden in database
         res_t = supabase.table("aanvragen").select("afspraak_tijd").eq("afspraak_datum", str(datum)).execute()
         bezet = [r['afspraak_tijd'] for r in res_t.data] if res_t.data else []
         
         cols = st.columns(6)
-        for i, tijd in enumerate(tijdsblokken):
-            is_bezet = tijd in bezet
-            if cols[i % 6].button(f"🚫 {tijd}" if is_bezet else tijd, key=f"t_{tijd}", disabled=is_bezet):
-                st.session_state.sel_tijd = tijd
+        for i, tijd_slot in enumerate(tijdsblokken):
+            is_bezet = tijd_slot in bezet
+            if cols[i % 6].button(f"🚫 {tijd_slot}" if is_bezet else tijd_slot, key=f"t_{tijd_slot}", disabled=is_bezet):
+                st.session_state.sel_tijd = tijd_slot
         
         if 'sel_tijd' in st.session_state:
-            st.info(f"Geselecteerd tijdstip: **{st.session_state.sel_tijd}**")
+            st.info(f"Geselecteerd: **{st.session_state.sel_tijd}**")
 
     if st.button("Registratie Verzenden"):
         if all([vnaam, anaam, email, id_nr, bericht]) and 'sel_tijd' in st.session_state:
-            # Database opslag
             supabase.table("aanvragen").insert({
                 "voornaam": vnaam, "achternaam": anaam, "email": email, "id_nummer": id_nr,
                 "telefoon": tel, "lad_nummer": lad_nr, "afspraak_datum": str(datum),
                 "afspraak_tijd": st.session_state.sel_tijd, "status": "In behandeling", "bericht": bericht
             }).execute()
             
-            # Professionele e-mails verzenden
-            html_intern = f"<h3>Nieuwe Registratie</h3><b>Cliënt:</b> {vnaam} {anaam}<br><b>ID:</b> {id_nr}<br><b>Bericht:</b> {bericht}<br><b>Tijd:</b> {datum} om {st.session_state.sel_tijd}"
-            stuur_mail_met_bijlagen(st.secrets['EMAIL_USER'], f"Nieuwe Aanvraag: {anaam}", html_intern, geuploade_bestanden)
+            # Mails versturen
+            inhoud = f"<h3>Nieuwe Registratie</h3><b>Naam:</b> {vnaam} {anaam}<br><b>ID:</b> {id_nr}<br><b>Tijd:</b> {datum} om {st.session_state.sel_tijd}<br><b>Bericht:</b> {bericht}"
+            stuur_mail_met_bijlagen(st.secrets['EMAIL_USER'], f"Nieuwe Registratie: {anaam}", inhoud, geuploade_bestanden)
             
-            st.success("✅ Uw aanvraag is succesvol verzonden!")
+            st.success("✅ Uw aanvraag is verzonden!")
             del st.session_state.sel_tijd
         else:
             st.error("Vul alle velden in en kies een tijdstip.")
@@ -129,18 +128,34 @@ elif menu == "📋 Beheer Registraties":
     res = supabase.table("aanvragen").select("*").order('created_at', desc=True).execute()
     if res.data:
         df = pd.DataFrame(res.data)
-        st.dataframe(df[['id', 'voornaam', 'achternaam', 'status', 'afspraak_datum']])
+        st.dataframe(df[['id', 'voornaam', 'achternaam', 'status']])
         
-        sel_id = st.selectbox("Selecteer dossier", df['id'].tolist())
+        sel_id = st.selectbox("Dossier ID selecteren", df['id'].tolist())
         reg = next(item for item in res.data if item['id'] == sel_id)
 
         with st.form("update_form"):
-            stat = st.selectbox("Status", ["Bevestigd", "In behandeling", "Afgehandeld", "Geannuleerd", "Verwezen"], index=0)
-            beh_optie = st.selectbox("Afgehandeld?", ["Nee", "Ja"], index=1 if reg.get('behandeld') else 0)
+            st.subheader(f"Bewerken: {reg['voornaam']} {reg['achternaam']}")
+            stat = st.selectbox("Status", ["Bevestigd", "In behandeling", "Afgehandeld", "Geannuleerd", "Verwezen"], 
+                               index=["Bevestigd", "In behandeling", "Afgehandeld", "Geannuleerd", "Verwezen"].index(reg['status']))
+            
+            # CORRECTIE VOOR BOOLEAN FOUT (image_667465.png)
+            afgehandeld_keuze = st.selectbox("Dossier volledig afgehandeld?", ["Nee", "Ja"], index=1 if reg.get('behandeld') else 0)
+            
+            stappen = st.text_area("Volgende stappen voor cliënt", value=str(reg.get('volgende_stappen') or ""))
             verslag = st.text_area("Intern verslag", value=str(reg.get('intern_verslag') or ""))
+            
             if st.form_submit_button("Wijzigingen Opslaan"):
-                supabase.table("aanvragen").update({"status": stat, "behandeld": (beh_optie == "Ja"), "intern_verslag": verslag}).eq("id", sel_id).execute()
-                st.success("Dossier bijgewerkt!")
+                # Zet "Ja/Nee" om naar True/False voor de database
+                bool_val = True if afgehandeld_keuze == "Ja" else False
+                
+                supabase.table("aanvragen").update({
+                    "status": stat, 
+                    "behandeld": bool_val, 
+                    "volgende_stappen": stappen, 
+                    "intern_verslag": verslag
+                }).eq("id", sel_id).execute()
+                
+                st.success("✅ Dossier succesvol bijgewerkt!")
                 st.rerun()
 
 elif menu == "📊 Rapportages":
@@ -158,4 +173,4 @@ elif menu == "📅 Agenda":
 
 elif menu == "⚙️ Systeembeheer":
     st.header("⚙️ Systeembeheer")
-    # ... (Code voor medewerkers toevoegen/verwijderen zoals eerder)
+    # ... (Gebruikersbeheer code)
