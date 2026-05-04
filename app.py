@@ -9,18 +9,19 @@ from email.mime.application import MIMEApplication
 import os
 
 # --- 1. CONFIGURATIE & VISUELE IDENTITEIT ---
-st.set_page_config(page_title="Dienst Grondzaken - Officiële Registratie", layout="wide")
+st.set_page_config(page_title="Dienst Grondzaken Wanica Centrum", layout="wide")
 
 # Verbinding met Supabase
 supabase = create_client(st.secrets["SUPABASE_URL"], st.secrets["SUPABASE_KEY"])
 
-# Sidebar met Logo en Nieuwe Benaming (Dienst Grondzaken)
+# Sidebar met Logo en Benaming
 with st.sidebar:
     logo_path = "orgineel logo Centrum.png"
     if os.path.exists(logo_path):
         st.image(logo_path, use_container_width=True) # cite: image_650ce2.png
     
-    st.markdown("<h2 style='text-align: center;'>Dienst Grondzaken</h2>", unsafe_allow_html=True) # cite: image_6420a0.png
+    # Benaming aangepast naar Dienst Grondzaken Wanica Centrum
+    st.markdown("<h2 style='text-align: center;'>Dienst Grondzaken Wanica Centrum</h2>", unsafe_allow_html=True) 
     st.divider()
 
 # --- COMMUNICATIE SERVICE (E-MAIL) ---
@@ -28,7 +29,7 @@ def stuur_notificatie(ontvanger, onderwerp, html_inhoud, bijlagen=None):
     try:
         msg = MIMEMultipart()
         msg['Subject'] = onderwerp
-        msg['From'] = f"Dienst Grondzaken <{st.secrets['EMAIL_USER']}>"
+        msg['From'] = f"Dienst Grondzaken Wanica Centrum <{st.secrets['EMAIL_USER']}>"
         msg['To'] = ontvanger
         msg.attach(MIMEText(html_inhoud, 'html'))
         
@@ -74,7 +75,8 @@ menu = st.sidebar.radio("Hoofdmenu", menu_options)
 # --- 4. FUNCTIONALITEITEN ---
 
 if menu == "📝 Nieuwe Registratie":
-    st.header("📝 Nieuwe Registratie Dienst Grondzaken") # cite: image_6517c5.png
+    # Titel aangepast naar Registratie Dienst Grondzaken Wanica Centrum
+    st.header("📝 Registratie Dienst Grondzaken Wanica Centrum") # cite: image_6436c4.png
     
     with st.container():
         col1, col2 = st.columns(2)
@@ -91,6 +93,7 @@ if menu == "📝 Nieuwe Registratie":
     geuploade_bestanden = st.file_uploader("Relevante documentatie uploaden", accept_multiple_files=True)
     
     st.divider()
+    # Professionele formulering voor de afspraken
     st.markdown("### Afspraak inplannen")
     st.info("Indien u een afspraak wenst, gelieve een datum en tijdstip te selecteren (beschikbaar op maandag en woensdag).") # cite: image_642ae8.png
     
