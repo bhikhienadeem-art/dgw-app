@@ -80,6 +80,7 @@ if st.session_state.logged_in:
 menu = st.sidebar.radio("Hoofdmenu", menu_options)
 
 if st.session_state.logged_in:
+    # Toon de huidige rol ter controle
     st.sidebar.write(f"Ingelogd als: **{st.session_state.user}** ({st.session_state.role})")
     if st.sidebar.button("🚪 Afmelden"):
         st.session_state.update({'logged_in': False, 'role': None, 'user': None})
@@ -93,6 +94,7 @@ else:
         if st.button("Inloggen"):
             user = next((u for u in res_m.data if u['gebruikersnaam'] == u_sel), None)
             if user and user['wachtwoord'] == p_inp:
+                # Forceer rol naar kleine letters om fouten te voorkomen
                 st.session_state.update({'logged_in': True, 'role': str(user['rol']).lower(), 'user': u_sel})
                 st.rerun()
 
@@ -123,6 +125,7 @@ if menu == "📝 Nieuwe Registratie":
     st.subheader("📅 Afspraak inplannen (Ma & Wo)")
     datum = st.date_input("Kies datum", min_value=datetime.date.today())
     
+    # Controle op dagen en tijden
     if datum.weekday() in [0, 2]:
         tijden = [f"{h:02d}:{m:02d}" for h in range(8, 15) for m in (0, 15, 30, 45) if not (h == 14 and m > 30)]
         cols = st.columns(6)
@@ -204,10 +207,10 @@ elif menu == "📅 Agenda":
     if res.data:
         st.table(pd.DataFrame(res.data).sort_values('afspraak_datum'))
 
-# --- 8. SYSTEEMBEHEER (VOLLEDIG HERSTELD) ---
+# --- 8. SYSTEEMBEHEER ---
 elif menu == "⚙️ Systeembeheer":
     st.header("⚙️ Systeembeheer")
-    # Controleer of rol 'admin' is (geforceerd naar lowercase voor veiligheid)
+    # Controleert nu ongeacht hoofdletters op de rol 'admin'
     if st.session_state.role == 'admin':
         st.subheader("Medewerkersbeheer")
         
@@ -231,5 +234,4 @@ elif menu == "⚙️ Systeembeheer":
                     supabase.table("medewerkers").delete().eq("id", m['id']).execute()
                     st.rerun()
     else:
-        # Foutmelding als rol geen admin is
-        st.error(f"U bent ingelogd als '{st.session_state.role}'. U heeft 'admin' rechten nodig voor deze pagina.")
+        st.error(f"Toegang geweigerd. Uw huidige rol is '{st.session_state.role}', maar 'admin' is vereist.")
