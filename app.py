@@ -99,7 +99,8 @@ else:
 if menu == "📝 Nieuwe Registratie":
     col_l, col_r = st.columns([1, 4])
     with col_l:
-        st.image("https://upload.wikimedia.org/wikipedia/commons/thumb/8/82/Coat_of_arms_of_Suriname.svg/1200px-Coat_of_arms_of_Suriname.svg.png", width=120)
+        # Logo via directe GitHub link voor stabiliteit
+        st.image("https://raw.githubusercontent.com/bhikhienadeem-art/dgw-app/main/orgineel%20logo%20Centrum.png", width=120)
     with col_r:
         st.title("Registratie Dienst Grondzaken Wanica Centrum")
     
@@ -131,14 +132,14 @@ if menu == "📝 Nieuwe Registratie":
                     st.session_state.selected_time = t
                     st.rerun()
     else:
-        st.warning("Bezoekafspraken zijn enkel op maandag en woensdag (08:00 - 14:30).")
+        st.warning("Bezoekafspraken zijn enkel op maandag en woensdag van 08:00 tot 14:30.")
 
     if st.button("✅ Registratie Indienen", type="primary", use_container_width=True):
         if all([vnaam, anaam, adres, email, id_nr, bericht]) and st.session_state.selected_time:
             data = {"voornaam": vnaam, "achternaam": anaam, "woonadres": adres, "email": email, "id_nummer": id_nr, "telefoon": tel, "lad_nummer": lad, "afspraak_datum": str(datum), "afspraak_tijd": st.session_state.selected_time, "status": "In behandeling", "bericht": bericht}
             supabase.table("aanvragen").insert(data).execute()
             
-            mail_body = f"<b>Nieuwe aanvraag van:</b> {vnaam} {anaam}<br><b>ID:</b> {id_nr}<br><b>Tel:</b> {tel}<br><b>Bericht:</b> {bericht}<br><br><b>Afspraak:</b> {datum} om {st.session_state.selected_time}"
+            mail_body = f"<b>Nieuwe aanvraag:</b> {vnaam} {anaam}<br><b>ID-nr:</b> {id_nr}<br><b>Bericht:</b> {bericht}<br><br><b>Afspraak:</b> {datum} om {st.session_state.selected_time}"
             stuur_mail(EMAIL_USER, f"NIEUWE REGISTRATIE: {vnaam}", mail_body, docs)
             st.success("Registratie succesvol ingediend.")
             st.session_state.selected_time = None
@@ -154,7 +155,6 @@ elif menu == "📋 Dossierbeheer":
         sel_id = st.selectbox("Selecteer Dossier ID", df['id'].tolist())
         d = next(item for item in res.data if item['id'] == sel_id)
         
-        # Volledige cliëntgegevens terugzetten
         st.markdown("### 📄 Cliënt Informatie")
         col_inf1, col_inf2 = st.columns(2)
         with col_inf1:
@@ -183,7 +183,7 @@ elif menu == "📋 Dossierbeheer":
         with btn_c1:
             if st.button("💾 Bijwerken & Mailen", use_container_width=True):
                 supabase.table("aanvragen").update({"status": n_status, "afspraak_datum": str(n_datum), "afspraak_tijd": n_tijd, "medewerker_toelichting": toelichting, "volgende_stappen": mail_tekst}).eq("id", sel_id).execute()
-                mail_cli = f"Geachte {d['voornaam']},<br><br>Uw dossier is bijgewerkt naar: <b>{n_status}</b>.<br>Nieuwe afspraak: {n_datum} om {n_tijd}.<br><br>{mail_tekst}"
+                mail_cli = f"Geachte {d['voornaam']},\n\nUw dossier is bijgewerkt naar: {n_status}.\nAfspraak: {n_datum} om {n_tijd}.\n\n{mail_tekst}"
                 stuur_mail(d['email'], "Update Dossier Grondzaken", mail_cli)
                 st.success("Dossier bijgewerkt.")
                 st.rerun()
@@ -226,4 +226,3 @@ elif menu == "⚙️ Systeembeheer":
                 if cm2.button("Wis", key=f"m_{m['id']}"):
                     supabase.table("medewerkers").delete().eq("id", m['id']).execute()
                     st.rerun()
-    else: st.error("Geen toegang.")
