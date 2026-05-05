@@ -24,7 +24,7 @@ if 'logged_in' not in st.session_state:
 if 'selected_time' not in st.session_state:
     st.session_state.selected_time = None
 
-# Login sectie voor medewerkers
+# Login voor medewerkers
 if not st.session_state.logged_in:
     with st.sidebar:
         st.subheader("🔐 Portaal voor Medewerkers")
@@ -38,98 +38,81 @@ if not st.session_state.logged_in:
                 if user_data and user_data['wachtwoord'] == p_inp:
                     st.session_state.update({'logged_in': True, 'role': user_data['rol'], 'user': u_sel})
                     st.rerun()
-                else:
-                    st.error("Inloggegevens zijn onjuist.")
         except Exception:
             pass
 
-# --- 3. MENU NAVIGATIE ---
-menu_options = ["📝 Nieuwe Registratie"]
-if st.session_state.logged_in:
-    menu_options += ["📋 Dossierbeheer", "📊 Rapportages", "⚙️ Systeembeheer"]
-    if st.sidebar.button("🚪 Afmelden"):
-        st.session_state.logged_in = False
-        st.rerun()
-
-menu = st.sidebar.radio("Hoofdmenu", menu_options)
-
-# --- 4. PAGINA LOGICA ---
+# --- 3. MENU ---
+menu = st.sidebar.radio("Hoofdmenu", ["📝 Nieuwe Registratie", "📋 Dossierbeheer"] if st.session_state.logged_in else ["📝 Nieuwe Registratie"])
 
 if menu == "📝 Nieuwe Registratie":
     st.header("Officiële Registratie Dienst Grondzaken Wanica Centrum")
-    st.write("Vul onderstaand formulier volledig in om uw verzoek formeel in te dienen.")
     
-    with st.form("registratie_form"):
-        col1, col2 = st.columns(2)
-        with col1:
-            vnaam = st.text_input("Voornaam (conform ID) *")
-            anaam = st.text_input("Achternaam *")
-            email = st.text_input("E-mailadres *")
-        with col2:
-            id_nr = st.text_input("Identiteitsnummer (ID) *")
-            tel = st.text_input("Telefoonnummer *")
-            lad_nr = st.text_input("LAD-nummer (indien van toepassing)")
+    # We plaatsen de tijdsloten BUITEN het formulier voor betere interactie
+    col1, col2 = st.columns(2)
+    with col1:
+        vnaam = st.text_input("Voornaam (conform ID) *")
+        anaam = st.text_input("Achternaam *")
+        email = st.text_input("E-mailadres *")
+    with col2:
+        id_nr = st.text_input("Identiteitsnummer (ID) *")
+        tel = st.text_input("Telefoonnummer *")
+        lad_nr = st.text_input("LAD-nummer (indien van toepassing)")
+    
+    bericht = st.text_area("Omschrijving van het verzoek of klacht *")
+    st.divider()
+    
+    st.markdown("### Planning Bezoekafspraak")
+    st.info("Voor een persoonlijke toelichting op uw dossier kunt u hieronder een afspraak inplannen. De bezoekuren zijn uitsluitend vastgesteld op maandag en woensdag.")
+    
+    datum = st.date_input("Kies een datum", min_value=datetime.date.today())
+    
+    # --- VISUELE TIJDSLOTEN GRID ---
+    if datum.weekday() in [0, 2]: # Maandag of Woensdag
+        st.write("**Klik op een groen tijdstip om te reserveren:**")
         
-        bericht = st.text_area("Omschrijving van het verzoek of klacht *")
-        st.divider()
+        tijdsblokken = [f"{h:02d}:{m:02d}" for h in range(8, 15) for m in (0, 15, 30, 45) if not (h == 14 and m > 30)]
         
-        st.markdown("### Planning Bezoekafspraak")
-        st.info("Voor een persoonlijke toelichting op uw dossier kunt u hieronder een afspraak inplannen. De bezoekuren zijn uitsluitend vastgesteld op maandag en woensdag.")
+        try:
+            res_t = supabase.table("aanvragen").select("afspraak_tijd").eq("afspraak_datum", str(datum)).execute()
+            bezet = [r['afspraak_tijd'] for r in res_t.data] if res_t.data else []
+        except:
+            bezet = []
+
+        # Grid van 4 kolommen voor de blokken
+        cols = st.columns(4)
+        for idx, tijd in enumerate(tijdsblokken):
+            with cols[idx % 4]:
+                if tijd in bezet:
+                    st.button(f"🔒 {tijd}", key=f"v_{tijd}", disabled=True, use_container_width=True)
+                else:
+                    # Kleur verandert bij selectie
+                    is_sel = st.session_state.selected_time == tijd
+                    style = "primary" if is_sel else "secondary"
+                    if st.button(f"🕒 {tijd}", key=f"v_{tijd}", type=style, use_container_width=True):
+                        st.session_state.selected_time = tijd
+                        st.rerun()
         
-        datum = st.date_input("Gewenste datum", min_value=datetime.date.today())
-        
-        # --- VISUELE TIJDSLOTEN ---
-        if datum.weekday() in [0, 2]: # Maandag = 0, Woensdag = 2
-            st.write("**Kies een beschikbaar tijdstip:**")
-            
-            # Genereer blokken van 15 min tussen 08:00 en 14:30
-            tijdsblokken = [f"{h:02d}:{m:02d}" for h in range(8, 15) for m in (0, 15, 30, 45) if not (h == 14 and m > 30)]
-            
+        if st.session_state.selected_time:
+            st.success(f"Geselecteerd: **{st.session_state.selected_time}**")
+    else:
+        st.warning("Bezoekafspraken zijn enkel mogelijk op maandag en woensdag.")
+
+    # De verzendknop
+    if st.button("Registratie Definitief Indienen", type="primary", use_container_width=True):
+        if all([vnaam, anaam, email, id_nr, bericht]) and st.session_state.selected_time:
             try:
-                # Controleer bezette tijden in database
-                res_t = supabase.table("aanvragen").select("afspraak_tijd").eq("afspraak_datum", str(datum)).execute()
-                bezet = [r['afspraak_tijd'] for r in res_t.data] if res_t.data else []
-            except Exception:
-                bezet = []
-
-            # Toon tijdsloten in een grid van 4 kolommen
-            cols = st.columns(4)
-            for idx, tijd in enumerate(tijdsblokken):
-                with cols[idx % 4]:
-                    if tijd in bezet:
-                        # Rood/Grijs blok voor bezette tijden
-                        st.button(f"🚫 {tijd}", key=f"slot_{tijd}", disabled=True, use_container_width=True)
-                    else:
-                        # Normaal blok voor beschikbare tijden
-                        # We gebruiken een indicator als het tijdstip geselecteerd is
-                        is_selected = st.session_state.selected_time == tijd
-                        label = f"📍 {tijd}" if is_selected else tijd
-                        
-                        if st.form_submit_button(label, use_container_width=True):
-                            st.session_state.selected_time = tijd
-            
-            if st.session_state.selected_time:
-                st.success(f"Geselecteerd tijdstip: **{st.session_state.selected_time}**")
+                supabase.table("aanvragen").insert({
+                    "voornaam": vnaam, "achternaam": anaam, "email": email, "id_nummer": id_nr,
+                    "telefoon": tel, "lad_nummer": lad_nr, "afspraak_datum": str(datum),
+                    "afspraak_tijd": st.session_state.selected_time, "status": "In behandeling", "bericht": bericht
+                }).execute()
+                st.success("✅ Uw registratie is succesvol ontvangen.")
+                st.session_state.selected_time = None
+                st.balloons()
+            except Exception as e:
+                st.error(f"Fout: {e}")
         else:
-            st.warning("Bezoekafspraken zijn enkel mogelijk op maandag en woensdag.")
-
-        # De definitieve verzendknop voor het hele formulier
-        submit_button = st.form_submit_button("Registratie Definitief Indienen", type="primary")
-        
-        if submit_button:
-            if all([vnaam, anaam, email, id_nr, bericht]) and st.session_state.selected_time:
-                try:
-                    supabase.table("aanvragen").insert({
-                        "voornaam": vnaam, "achternaam": anaam, "email": email, "id_nummer": id_nr,
-                        "telefoon": tel, "lad_nummer": lad_nr, "afspraak_datum": str(datum),
-                        "afspraak_tijd": st.session_state.selected_time, "status": "In behandeling", "bericht": bericht
-                    }).execute()
-                    st.success("✅ Uw registratie is succesvol ontvangen.")
-                    st.session_state.selected_time = None # Reset na indienen
-                except Exception as e:
-                    st.error(f"Systeemfout: {e}")
-            else:
-                st.error("Vul alle verplichte velden in en klik op een van de tijdsloten hierboven.")
+            st.error("Vul alle velden in en selecteer een visueel tijdslot.")
 
 elif menu == "📋 Dossierbeheer":
     st.header("Centraal Dossierbeheer")
@@ -138,16 +121,3 @@ elif menu == "📋 Dossierbeheer":
         df = pd.DataFrame(res.data)
         df.insert(0, 'Nr.', range(1, len(df) + 1))
         st.dataframe(df[['Nr.', 'id', 'voornaam', 'achternaam', 'status', 'afspraak_datum', 'afspraak_tijd']], hide_index=True)
-
-elif menu == "📊 Rapportages":
-    st.header("📊 Rapportages")
-    res = supabase.table("aanvragen").select("*").execute()
-    if res.data:
-        st.dataframe(pd.DataFrame(res.data))
-
-elif menu == "⚙️ Systeembeheer":
-    st.header("⚙️ Gebruikersbeheer")
-    res_m = supabase.table("medewerkers").select("*").execute()
-    if res_m.data:
-        for m in res_m.data:
-            st.write(f"👤 {m['gebruikersnaam']} ({m['rol']})")
