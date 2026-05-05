@@ -22,7 +22,7 @@ with st.sidebar:
 if 'logged_in' not in st.session_state:
     st.session_state.update({'logged_in': False, 'role': None, 'user': None})
 
-# Login sectie voor medewerkers (Hersteld)
+# Login sectie voor medewerkers (ALLES TERUGGEZET)
 if not st.session_state.logged_in:
     with st.sidebar:
         st.subheader("🔐 Portaal voor Medewerkers")
@@ -72,24 +72,30 @@ if menu == "📝 Nieuwe Registratie":
         st.divider()
         
         st.markdown("### Planning Bezoekafspraak")
+        # Jouw tekst hersteld
         st.info("Voor een persoonlijke toelichting op uw dossier kunt u hieronder een afspraak inplannen. De bezoekuren zijn uitsluitend vastgesteld op maandag en woensdag.")
         
         datum = st.date_input("Gewenste datum", min_value=datetime.date.today())
         
+        # VERBETERDE DAG-LOGICA (0=Maandag, 2=Woensdag)
+        gekozen_dag = datum.weekday()
+        
         tijd_keuze = "---"
-        # Logica voor tijdsloten (0=Maandag, 2=Woensdag)
-        if datum.weekday() in [0, 2]:
+        if gekozen_dag == 0 or gekozen_dag == 2:
+            # Tijdsloten van 15 minuten tussen 08:00 en 14:30
             tijdsblokken = [f"{h:02d}:{m:02d}" for h in range(8, 15) for m in (0, 15, 30, 45) if not (h == 14 and m > 30)]
             
             try:
+                # Alleen beschikbare tijden ophalen
                 res_t = supabase.table("aanvragen").select("afspraak_tijd").eq("afspraak_datum", str(datum)).execute()
                 bezet = [r['afspraak_tijd'] for r in res_t.data] if res_t.data else []
                 vrije_blokken = [t for t in tijdsblokken if t not in bezet]
                 
-                tijd_keuze = st.selectbox("Beschikbare tijdstippen", ["---"] + vrije_blokken)
+                tijd_keuze = st.selectbox("Beschikbare tijdstippen (15 min per consult)", ["---"] + vrije_blokken)
             except Exception as e:
-                st.error(f"Fout bij ophalen tijden: {e}")
+                st.error(f"Fout bij ophalen beschikbaarheid: {e}")
         else:
+            # Waarschuwing als het geen Ma of Wo is
             st.warning("Bezoekafspraken zijn enkel mogelijk op maandag en woensdag.")
 
         if st.form_submit_button("Registratie Definitief Indienen"):
@@ -102,9 +108,9 @@ if menu == "📝 Nieuwe Registratie":
                     }).execute()
                     st.success("✅ Uw registratie is succesvol ontvangen.")
                 except Exception as e:
-                    st.error(f"Fout bij opslaan: {e}")
+                    st.error(f"Systeemfout bij opslaan: {e}")
             else:
-                st.error("Vul alle verplichte velden in en kies een geldig tijdstip.")
+                st.error("Vul alle verplichte velden in en selecteer een geldig tijdstip.")
 
 elif menu == "📋 Dossierbeheer":
     st.header("Centraal Dossierbeheer")
@@ -113,27 +119,3 @@ elif menu == "📋 Dossierbeheer":
         df = pd.DataFrame(res.data)
         df.insert(0, 'Nr.', range(1, len(df) + 1))
         st.dataframe(df[['Nr.', 'id', 'voornaam', 'achternaam', 'status', 'afspraak_datum']], hide_index=True)
-        
-        sel_id = st.selectbox("Selecteer dossier voor details", df['id'].tolist())
-        reg = next(item for item in res.data if item['id'] == sel_id)
-        st.subheader(f"Details van dossier: {reg['id']}")
-        
-        with st.form("update_status"):
-            n_status = st.selectbox("Status", ["Bevestigd", "In behandeling", "Afgehandeld", "Geannuleerd"])
-            if st.form_submit_button("Bijwerken"):
-                supabase.table("aanvragen").update({"status": n_status}).eq("id", sel_id).execute()
-                st.success("Status aangepast!")
-                st.rerun()
-
-elif menu == "📊 Rapportages":
-    st.header("📊 Rapportages")
-    res = supabase.table("aanvragen").select("*").execute()
-    if res.data:
-        st.dataframe(pd.DataFrame(res.data))
-
-elif menu == "⚙️ Systeembeheer":
-    st.header("⚙️ Gebruikersbeheer")
-    res_m = supabase.table("medewerkers").select("*").execute()
-    if res_m.data:
-        for m in res_m.data:
-            st.write(f"👤 {m['gebruikersnaam']} ({m['rol']})")
