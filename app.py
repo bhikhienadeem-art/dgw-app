@@ -80,7 +80,6 @@ if st.session_state.logged_in:
 menu = st.sidebar.radio("Hoofdmenu", menu_options)
 
 if st.session_state.logged_in:
-    # Toon de huidige rol ter controle
     st.sidebar.write(f"Ingelogd als: **{st.session_state.user}** ({st.session_state.role})")
     if st.sidebar.button("🚪 Afmelden"):
         st.session_state.update({'logged_in': False, 'role': None, 'user': None})
@@ -94,7 +93,6 @@ else:
         if st.button("Inloggen"):
             user = next((u for u in res_m.data if u['gebruikersnaam'] == u_sel), None)
             if user and user['wachtwoord'] == p_inp:
-                # Forceer rol naar kleine letters om fouten te voorkomen
                 st.session_state.update({'logged_in': True, 'role': str(user['rol']).lower(), 'user': u_sel})
                 st.rerun()
 
@@ -125,7 +123,6 @@ if menu == "📝 Nieuwe Registratie":
     st.subheader("📅 Afspraak inplannen (Ma & Wo)")
     datum = st.date_input("Kies datum", min_value=datetime.date.today())
     
-    # Controle op dagen en tijden
     if datum.weekday() in [0, 2]:
         tijden = [f"{h:02d}:{m:02d}" for h in range(8, 15) for m in (0, 15, 30, 45) if not (h == 14 and m > 30)]
         cols = st.columns(6)
@@ -195,22 +192,60 @@ elif menu == "📋 Dossierbeheer":
                 supabase.table("aanvragen").delete().eq("id", sel_id).execute()
                 st.rerun()
 
-# --- 7. RAPPORTAGES & AGENDA ---
+# --- 7. VERBETERDE RAPPORTAGES ---
 elif menu == "📊 Rapportages":
+    st.header("📊 Management Rapportages")
     res = supabase.table("aanvragen").select("*").execute()
+    
     if res.data:
         df = pd.DataFrame(res.data)
-        st.dataframe(df, use_container_width=True)
+        
+        # Dashboard statistieken
+        c1, c2, c3, c4 = st.columns(4)
+        c1.metric("Totaal Aanvragen", len(df))
+        c2.metric("In behandeling", len(df[df['status'] == 'In behandeling']))
+        c3.metric("Bevestigd", len(df[df['status'] == 'Bevestigd']))
+        c4.metric("Afgehandeld", len(df[df['status'] == 'Afgehandeld']))
+        
+        st.divider()
 
+        # Filter opties
+        col_f1, col_f2 = st.columns([1, 2])
+        with col_f1:
+            status_filter = st.multiselect("Filter op Status", df['status'].unique(), default=df['status'].unique())
+        with col_f2:
+            search_query = st.text_input("Zoek op Achternaam of ID-nummer", placeholder="Typ om te zoeken...")
+
+        # Data filteren op basis van invoer
+        filtered_df = df[df['status'].isin(status_filter)]
+        if search_query:
+            filtered_df = filtered_df[
+                filtered_df['achternaam'].str.contains(search_query, case=False, na=False) | 
+                filtered_df['id_nummer'].str.contains(search_query, case=False, na=False)
+            ]
+
+        # Schone weergave van de tabel
+        st.subheader(f"Overzicht ({len(filtered_df)} resultaten)")
+        display_cols = ['id_nummer', 'voornaam', 'achternaam', 'email', 'status', 'afspraak_datum', 'afspraak_tijd']
+        st.dataframe(filtered_df[display_cols], use_container_width=True, hide_index=True)
+        
+        # Download knop
+        csv = filtered_df.to_csv(index=False).encode('utf-8')
+        st.download_button("📥 Exporteer naar Excel (CSV)", csv, f"rapport_{datetime.date.today()}.csv", "text/csv")
+    else:
+        st.info("Er zijn nog geen registraties gevonden in de database.")
+
+# --- 8. AGENDA ---
 elif menu == "📅 Agenda":
+    st.header("📅 Bezoekagenda")
     res = supabase.table("aanvragen").select("voornaam, achternaam, afspraak_datum, afspraak_tijd, status").execute()
     if res.data:
-        st.table(pd.DataFrame(res.data).sort_values('afspraak_datum'))
+        df_agenda = pd.DataFrame(res.data).sort_values(['afspraak_datum', 'afspraak_tijd'])
+        st.table(df_agenda)
 
-# --- 8. SYSTEEMBEHEER ---
+# --- 9. SYSTEEMBEHEER ---
 elif menu == "⚙️ Systeembeheer":
     st.header("⚙️ Systeembeheer")
-    # Controleert nu ongeacht hoofdletters op de rol 'admin'
     if st.session_state.role == 'admin':
         st.subheader("Medewerkersbeheer")
         
