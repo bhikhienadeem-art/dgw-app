@@ -15,7 +15,7 @@ with st.sidebar:
     logo_path = "orgineel logo Centrum.png"
     if os.path.exists(logo_path):
         st.image(logo_path, use_container_width=True)
-    st.markdown("<h2 style='text-align: center;'>DGW Wanica Centrum</h2>", unsafe_allow_html=True)
+    st.markdown("<h2 style='text-align: center;'>Dienst Grondzaken Wanica Centrum</h2>", unsafe_allow_html=True)
     st.divider()
 
 # --- 2. AUTHENTICATIE & STATE ---
@@ -38,16 +38,27 @@ if not st.session_state.logged_in:
                 if user_data and user_data['wachtwoord'] == p_inp:
                     st.session_state.update({'logged_in': True, 'role': user_data['rol'], 'user': u_sel})
                     st.rerun()
+                else:
+                    st.error("Inloggegevens zijn onjuist.")
         except Exception:
             pass
 
-# --- 3. MENU ---
-menu = st.sidebar.radio("Hoofdmenu", ["📝 Nieuwe Registratie", "📋 Dossierbeheer"] if st.session_state.logged_in else ["📝 Nieuwe Registratie"])
+# --- 3. MENU NAVIGATIE (VOLLEDIG HERSTELD) ---
+menu_options = ["📝 Nieuwe Registratie"]
+if st.session_state.logged_in:
+    menu_options += ["📋 Dossierbeheer", "📊 Rapportages", "⚙️ Systeembeheer"]
+    if st.sidebar.button("🚪 Afmelden"):
+        st.session_state.update({'logged_in': False, 'role': None, 'user': None})
+        st.rerun()
+
+menu = st.sidebar.radio("Hoofdmenu", menu_options)
+
+# --- 4. PAGINA LOGICA ---
 
 if menu == "📝 Nieuwe Registratie":
     st.header("Registratie Dienst Grondzaken Wanica Centrum")
     
-    # Persoonlijke gegevens
+    # Gebruikersinvoer
     col1, col2 = st.columns(2)
     with col1:
         vnaam = st.text_input("Voornaam (conform ID) *")
@@ -60,20 +71,18 @@ if menu == "📝 Nieuwe Registratie":
     
     bericht = st.text_area("Omschrijving van het verzoek of klacht *")
     
-    # --- DOCUMENT UPLOAD SECTIE ---
+    # Document upload
     st.markdown("### Documenten Bijvoegen")
     uploaded_files = st.file_uploader("Upload relevante documenten (PDF, JPG, PNG)", accept_multiple_files=True)
     
     st.divider()
-    
-    # --- PLANNING ---
     st.markdown("### Planning Bezoekafspraak")
     st.info("Voor een persoonlijke toelichting op uw dossier kunt u hieronder een afspraak inplannen. De bezoekuren zijn uitsluitend vastgesteld op maandag en woensdag.")
     
     datum = st.date_input("Kies een datum", min_value=datetime.date.today())
     
-    # Visuele tijdsloten
-    if datum.weekday() in [0, 2]: # Maandag of Woensdag
+    # Visuele Tijdsloten
+    if datum.weekday() in [0, 2]:
         st.write("**Klik op een beschikbaar tijdstip om te reserveren:**")
         tijdsblokken = [f"{h:02d}:{m:02d}" for h in range(8, 15) for m in (0, 15, 30, 45) if not (h == 14 and m > 30)]
         
@@ -100,36 +109,56 @@ if menu == "📝 Nieuwe Registratie":
     else:
         st.warning("Bezoekafspraken zijn enkel mogelijk op maandag en woensdag.")
 
-    # Verzendknop
     if st.button("Registratie Definitief Indienen", type="primary", use_container_width=True):
         if all([vnaam, anaam, email, id_nr, bericht]) and st.session_state.selected_time:
             try:
-                # 1. Dossier opslaan
                 res = supabase.table("aanvragen").insert({
                     "voornaam": vnaam, "achternaam": anaam, "email": email, "id_nummer": id_nr,
                     "telefoon": tel, "lad_nummer": lad_nr, "afspraak_datum": str(datum),
                     "afspraak_tijd": st.session_state.selected_time, "status": "In behandeling", "bericht": bericht
                 }).execute()
                 
-                # 2. Documenten uploaden naar Storage indien aanwezig
                 if uploaded_files and res.data:
                     dossier_id = res.data[0]['id']
                     for f in uploaded_files:
-                        path = f"{dossier_id}/{f.name}"
-                        supabase.storage.from_("documenten").upload(path, f.getvalue())
+                        supabase.storage.from_("documenten").upload(f"{dossier_id}/{f.name}", f.getvalue())
 
-                st.success("✅ Uw registratie inclusief documenten is succesvol ontvangen.")
+                st.success("✅ Uw registratie is succesvol ontvangen.")
                 st.session_state.selected_time = None
                 st.balloons()
             except Exception as e:
-                st.error(f"Fout bij verwerken: {e}")
+                st.error(f"Fout: {e}")
         else:
-            st.error("Vul alle verplichte velden in en selecteer een tijdstip.")
+            st.error("Vul alle velden in en selecteer een tijdstip.")
 
 elif menu == "📋 Dossierbeheer":
     st.header("Centraal Dossierbeheer")
     res = supabase.table("aanvragen").select("*").order('id', desc=True).execute()
     if res.data:
         df = pd.DataFrame(res.data)
-        df.insert(0, 'Nr.', range(1, len(df) + 1))
-        st.dataframe(df[['Nr.', 'id', 'voornaam', 'achternaam', 'status', 'afspraak_datum', 'afspraak_tijd']], hide_index=True)
+        st.dataframe(df, hide_index=True)
+        
+        sel_id = st.selectbox("Selecteer dossier ID voor update", df['id'].tolist())
+        with st.form("status_update"):
+            n_status = st.selectbox("Nieuwe Status", ["In behandeling", "Bevestigd", "Afgehandeld", "Geannuleerd"])
+            if st.form_submit_button("Update Status"):
+                supabase.table("aanvragen").update({"status": n_status}).eq("id", sel_id).execute()
+                st.success("Status bijgewerkt!")
+                st.rerun()
+
+elif menu == "📊 Rapportages":
+    st.header("📊 Management Overzicht")
+    res = supabase.table("aanvragen").select("*").execute()
+    if res.data:
+        df_rep = pd.DataFrame(res.data)
+        st.bar_chart(df_rep['status'].value_counts())
+        st.dataframe(df_rep)
+
+elif menu == "⚙️ Systeembeheer":
+    st.header("⚙️ Gebruikersinstellingen")
+    if st.session_state.role == 'admin':
+        res_m = supabase.table("medewerkers").select("*").execute()
+        st.write("Medewerkersoverzicht:")
+        st.table(pd.DataFrame(res_m.data)[['gebruikersnaam', 'rol']])
+    else:
+        st.warning("Alleen toegankelijk voor Administrators.")
