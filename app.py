@@ -20,7 +20,8 @@ with st.sidebar:
     logo_path = "orgineel logo Centrum.png"
     if os.path.exists(logo_path):
         st.image(logo_path, use_container_width=True)
-    st.markdown("<h2 style='text-align: center;'>DGW Wanica Centrum</h2>", unsafe_allow_html=True)
+    # De gewenste titel in de sidebar
+    st.markdown("<h2 style='text-align: center;'>Dienst Grondzaken Wanica</h2>", unsafe_allow_html=True)
     st.divider()
 
 # --- COMMUNICATIE SERVICE ---
@@ -78,9 +79,9 @@ menu = st.sidebar.radio("Hoofdmenu", menu_options)
 
 # --- 4. PAGINA LOGICA ---
 
-# --- REGISTRATIE PAGINA (AANGEPASTE TITEL) ---
+# --- REGISTRATIE PAGINA ---
 if menu == "📝 Nieuwe Registratie":
-    st.header("Registratie Dienst Grondzaken Wanica centrum") # Aangepast op verzoek
+    st.header("Registratie Dienst Grondzaken Wanica centrum")
     with st.form("registratie_form", clear_on_submit=True):
         col1, col2 = st.columns(2)
         with col1:
@@ -124,14 +125,14 @@ if menu == "📝 Nieuwe Registratie":
             else:
                 st.error("Vul alle verplichte velden in en kies een tijdstip.")
 
-# --- DOSSIERBEHEER (MET NUMMERING VANAF 1) ---
+# --- DOSSIERBEHEER (NUMMERING VANAF 1) ---
 elif menu == "📋 Dossierbeheer":
     st.header("📋 Dossierbeheer")
     res = supabase.table("aanvragen").select("*").order('id', desc=True).execute()
     
     if res.data:
         df = pd.DataFrame(res.data)
-        # Voeg een weergave-nummer toe dat bij 1 begint
+        # Toevoegen van de Nr. kolom die bij 1 begint
         df.insert(0, 'Nr.', range(1, len(df) + 1))
         
         st.dataframe(df[['Nr.', 'id', 'voornaam', 'achternaam', 'status', 'afspraak_datum']], 
@@ -164,7 +165,7 @@ elif menu == "📋 Dossierbeheer":
                 st.success("Dossier bijgewerkt!")
                 st.rerun()
     else:
-        st.info("Er zijn geen dossiers gevonden.")
+        st.info("Geen dossiers gevonden.")
 
 # --- OVERIGE PAGINA'S ---
 elif menu == "📅 Agenda":
