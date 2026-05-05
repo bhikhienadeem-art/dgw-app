@@ -205,13 +205,12 @@ elif menu == "📅 Agenda":
     if res.data:
         st.table(pd.DataFrame(res.data).sort_values('afspraak_datum'))
 
-# --- 8. SYSTEEMBEHEER (HERSTELD) ---
+# --- 8. SYSTEEMBEHEER ---
 elif menu == "⚙️ Systeembeheer":
     st.header("⚙️ Systeembeheer")
     if st.session_state.role == 'admin':
         st.subheader("Medewerkersbeheer")
         
-        # Sectie voor het toevoegen van nieuwe medewerkers
         with st.expander("➕ Nieuwe Medewerker Toevoegen"):
             new_user = st.text_input("Gebruikersnaam")
             new_pass = st.text_input("Wachtwoord", type="password")
@@ -229,8 +228,6 @@ elif menu == "⚙️ Systeembeheer":
                     st.error("Vul alle velden in.")
 
         st.divider()
-        
-        # Lijst van huidige medewerkers tonen
         st.subheader("Huidige Medewerkers")
         res_m = supabase.table("medewerkers").select("*").execute()
         if res_m.data:
@@ -239,12 +236,8 @@ elif menu == "⚙️ Systeembeheer":
                 with col_m1:
                     st.write(f"👤 **{m['gebruikersnaam']}** | Rol: `{m['rol']}`")
                 with col_m2:
-                    # Medewerkers verwijderen
                     if st.button("Wis", key=f"med_{m['id']}", use_container_width=True):
                         supabase.table("medewerkers").delete().eq("id", m['id']).execute()
-                        st.warning(f"Gebruiker {m['gebruikersnaam']} verwijderd.")
                         st.rerun()
-        else:
-            st.info("Geen medewerkers gevonden.")
     else:
         st.error("U heeft geen admin-rechten om deze pagina te bekijken.")
