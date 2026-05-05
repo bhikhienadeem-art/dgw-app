@@ -125,25 +125,57 @@ if menu == "📝 Nieuwe Registratie":
             else:
                 st.error("Vul alle velden in.")
 
-# --- DOSSIERBEHEER (HERSTELD) ---
+# --- DOSSIERBEHEER (UITGEBREID OVERZICHT) ---
 elif menu == "📋 Dossierbeheer":
     st.header("📋 Dossierbeheer")
+    
+    # Haal alle aanvragen op uit de database
     res = supabase.table("aanvragen").select("*").order('id', desc=True).execute()
+    
     if res.data:
         df = pd.DataFrame(res.data)
+        # Toon eerst de beknopte tabel
         st.dataframe(df[['id', 'voornaam', 'achternaam', 'status', 'afspraak_datum']], use_container_width=True)
         
-        sel_id = st.selectbox("Selecteer Dossier ID voor verwerking", df['id'].tolist())
+        st.divider()
+        
+        # Selectie voor detailoverzicht
+        sel_id = st.selectbox("Selecteer Dossier ID voor alle details en verwerking", df['id'].tolist())
         reg = next(item for item in res.data if item['id'] == sel_id)
 
-        with st.form("update_dossier"):
+        # Toon ALLE gegevens van de geregistreerde
+        st.subheader(f"Details van dossier: {reg['id']}")
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.write(f"**Naam:** {reg['voornaam']} {reg['achternaam']}")
+            st.write(f"**E-mail:** {reg['email']}")
+            st.write(f"**Telefoon:** {reg['telefoon']}")
+            st.write(f"**ID-Nummer:** {reg['id_nummer']}")
+            st.write(f"**LAD Nummer:** {reg.get('lad_nummer') or 'Niet opgegeven'}")
+            
+        with col2:
+            st.write(f"**Afspraakdatum:** {reg['afspraak_datum']}") # cite: image_6432a9.png
+            st.write(f"**Afspraaktijd:** {reg['afspraak_tijd']}") # cite: image_642724.png
+            st.write(f"**Huidige Status:** {reg['status']}")
+            st.write(f"**Omschrijving verzoek:**")
+            st.info(reg['bericht'])
+
+        # Formulier voor status-updates en rapportage
+        with st.form("update_dossier_uitgebreid"):
             stat = st.selectbox("Status aanpassen", ["Bevestigd", "In behandeling", "Afgehandeld", "Geannuleerd"], 
                                index=["Bevestigd", "In behandeling", "Afgehandeld", "Geannuleerd"].index(reg['status']))
             verslag = st.text_area("Intern Verslag / Rapportage", value=str(reg.get('intern_verslag') or ""))
+            
             if st.form_submit_button("Wijzigingen Opslaan"):
-                supabase.table("aanvragen").update({"status": stat, "intern_verslag": verslag}).eq("id", sel_id).execute()
-                st.success("Dossier succesvol bijgewerkt!")
+                supabase.table("aanvragen").update({
+                    "status": stat, 
+                    "intern_verslag": verslag
+                }).eq("id", sel_id).execute()
+                st.success(f"Dossier {sel_id} succesvol bijgewerkt!")
                 st.rerun()
+    else:
+        st.info("Er zijn momenteel geen dossiers geregistreerd.")
     else:
         st.info("Er zijn momenteel geen dossiers geregistreerd.")
 
