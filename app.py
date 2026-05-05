@@ -102,7 +102,7 @@ if menu == "📝 Nieuwe Registratie":
         datum = st.date_input("Kies een datum", min_value=datetime.date.today())
         
         tijd_keuze = None
-        if datum.weekday() in [0, 2]: # Maandag = 0, Woensdag = 2
+        if datum.weekday() in [0, 2]:
             tijdsblokken = [f"{h:02d}:{m:02d}" for h in range(8, 15) for m in (0, 15, 30, 45) if not (h == 14 and m > 30)]
             res_t = supabase.table("aanvragen").select("afspraak_tijd").eq("afspraak_datum", str(datum)).execute()
             bezet = [r['afspraak_tijd'] for r in res_t.data] if res_t.data else []
@@ -120,18 +120,22 @@ if menu == "📝 Nieuwe Registratie":
                     }).execute()
                     st.success("✅ Uw registratie is succesvol verwerkt!")
                 except Exception as e:
-                    st.error(f"Fout bij opslaan: {e}")
+                    st.error(f"Fout: {e}")
             else:
-                st.error("Vul alle verplichte velden in en kies een geldig tijdstip.")
+                st.error("Vul alle verplichte velden in en kies een tijdstip.")
 
-# --- DOSSIERBEHEER (VERBETERD OVERZICHT) ---
+# --- DOSSIERBEHEER (MET NUMMERING VANAF 1) ---
 elif menu == "📋 Dossierbeheer":
     st.header("📋 Dossierbeheer")
     res = supabase.table("aanvragen").select("*").order('id', desc=True).execute()
     
     if res.data:
         df = pd.DataFrame(res.data)
-        st.dataframe(df[['id', 'voornaam', 'achternaam', 'status', 'afspraak_datum']], use_container_width=True)
+        # Voeg een weergave-nummer toe dat bij 1 begint
+        df.insert(0, 'Nr.', range(1, len(df) + 1))
+        
+        st.dataframe(df[['Nr.', 'id', 'voornaam', 'achternaam', 'status', 'afspraak_datum']], 
+                     use_container_width=True, hide_index=True)
         st.divider()
         
         sel_id = st.selectbox("Selecteer Dossier ID voor alle details", df['id'].tolist())
@@ -144,6 +148,7 @@ elif menu == "📋 Dossierbeheer":
             st.write(f"**ID-Nummer:** {reg['id_nummer']}")
             st.write(f"**Telefoon:** {reg['telefoon']}")
             st.write(f"**E-mail:** {reg['email']}")
+            st.write(f"**LAD Nummer:** {reg.get('lad_nummer') or 'N.v.t.'}")
         with col_y:
             st.write(f"**Afspraakdatum:** {reg['afspraak_datum']}")
             st.write(f"**Afspraaktijd:** {reg['afspraak_tijd']}")
@@ -161,14 +166,13 @@ elif menu == "📋 Dossierbeheer":
     else:
         st.info("Er zijn geen dossiers gevonden.")
 
+# --- OVERIGE PAGINA'S ---
 elif menu == "📅 Agenda":
     st.header("📅 Agenda")
     res = supabase.table("aanvragen").select("*").execute()
     if res.data:
         events = [{"title": f"{r['voornaam']} {r['achternaam']}", "start": r['afspraak_datum']} for r in res.data]
         calendar(events=events)
-    else:
-        st.info("De agenda is momenteel leeg.")
 
 elif menu == "📊 Rapportages":
     st.header("📊 Rapportages")
@@ -176,25 +180,20 @@ elif menu == "📊 Rapportages":
     if res.data:
         df = pd.DataFrame(res.data)
         st.dataframe(df)
-        st.download_button("Download Data (CSV)", df.to_csv(index=False).encode('utf-8'), "rapportage.csv", "text/csv")
+        st.download_button("Download CSV", df.to_csv(index=False).encode('utf-8'), "rapport.csv", "text/csv")
 
 elif menu == "⚙️ Systeeminstellingen":
     st.header("⚙️ Systeeminstellingen")
-    st.subheader("Medewerkersoverzicht")
     res_m = supabase.table("medewerkers").select("*").execute()
     if res_m.data:
         for m in res_m.data:
             st.write(f"👤 {m['gebruikersnaam']} ({m['rol']})")
     
-    st.divider()
-    with st.form("add_user_form"):
-        u = st.text_input("Nieuwe Gebruikersnaam")
+    with st.form("add_user"):
+        u = st.text_input("Nieuwe Gebruiker")
         p = st.text_input("Wachtwoord", type="password")
         r = st.selectbox("Rol", ["Medewerker", "Admin"])
-        if st.form_submit_button("Account Toevoegen"):
-            if u and p:
-                supabase.table("medewerkers").insert({"gebruikersnaam": u, "wachtwoord": p, "rol": r}).execute()
-                st.success("Account aangemaakt!")
-                st.rerun()
-            else:
-                st.error("Vul alle velden in.")
+        if st.form_submit_button("Toevoegen"):
+            supabase.table("medewerkers").insert({"gebruikersnaam": u, "wachtwoord": p, "rol": r}).execute()
+            st.success("Toegevoegd!")
+            st.rerun()
