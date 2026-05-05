@@ -78,9 +78,9 @@ menu = st.sidebar.radio("Hoofdmenu", menu_options)
 
 # --- 4. PAGINA LOGICA ---
 
-# --- REGISTRATIE PAGINA (ONGEWIJZIGD) ---
+# --- REGISTRATIE PAGINA (AANGEPASTE TITEL) ---
 if menu == "📝 Nieuwe Registratie":
-    st.header("📝 Nieuwe Registratie Dienst Grondzaken")
+    st.header("Registratie Dienst Grondzaken Wanica centrum") # Aangepast op verzoek
     with st.form("registratie_form", clear_on_submit=True):
         col1, col2 = st.columns(2)
         with col1:
@@ -102,7 +102,7 @@ if menu == "📝 Nieuwe Registratie":
         datum = st.date_input("Kies een datum", min_value=datetime.date.today())
         
         tijd_keuze = None
-        if datum.weekday() in [0, 2]:
+        if datum.weekday() in [0, 2]: # Maandag en Woensdag
             tijdsblokken = [f"{h:02d}:{m:02d}" for h in range(8, 15) for m in (0, 15, 30, 45) if not (h == 14 and m > 30)]
             res_t = supabase.table("aanvragen").select("afspraak_tijd").eq("afspraak_datum", str(datum)).execute()
             bezet = [r['afspraak_tijd'] for r in res_t.data] if res_t.data else []
