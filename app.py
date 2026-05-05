@@ -22,7 +22,7 @@ with st.sidebar:
 if 'logged_in' not in st.session_state:
     st.session_state.update({'logged_in': False, 'role': None, 'user': None})
 
-# Login sectie voor medewerkers
+# Login sectie voor medewerkers (Hersteld)
 if not st.session_state.logged_in:
     with st.sidebar:
         st.subheader("🔐 Portaal voor Medewerkers")
@@ -111,7 +111,7 @@ elif menu == "📋 Dossierbeheer":
     res = supabase.table("aanvragen").select("*").order('id', desc=True).execute()
     if res.data:
         df = pd.DataFrame(res.data)
-        df.insert(0, 'Nr.', range(1, len(df) + 1)) # Nummering vanaf 1
+        df.insert(0, 'Nr.', range(1, len(df) + 1))
         st.dataframe(df[['Nr.', 'id', 'voornaam', 'achternaam', 'status', 'afspraak_datum']], hide_index=True)
         
         sel_id = st.selectbox("Selecteer dossier voor details", df['id'].tolist())
