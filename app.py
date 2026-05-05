@@ -15,7 +15,7 @@ st.set_page_config(page_title="Registratie Dienst Grondzaken Wanica Centrum", la
 # Verbinding met Supabase
 supabase = create_client(st.secrets["SUPABASE_URL"], st.secrets["SUPABASE_KEY"])
 
-# Sidebar met Logo en Professionele Titel
+# Sidebar met Logo en Titel
 with st.sidebar:
     logo_path = "orgineel logo Centrum.png"
     if os.path.exists(logo_path):
@@ -78,9 +78,9 @@ menu = st.sidebar.radio("Hoofdmenu", menu_options)
 
 # --- 4. PAGINA LOGICA ---
 
-# --- REGISTRATIE PAGINA (PROFESSIONELE VERWOORDING) ---
+# --- REGISTRATIE PAGINA (AANGEPASTE TITEL) ---
 if menu == "📝 Nieuwe Registratie":
-    st.header("Officiële Registratie Dienst Grondzaken Wanica Centrum")
+    st.header("Registratie Dienst Grondzaken Wanica Centrum") # Exacte tekst aangepast
     st.write("Vul onderstaand formulier volledig in om uw verzoek formeel in te dienen bij de Dienst Grondzaken.")
     
     with st.form("registratie_form", clear_on_submit=True):
@@ -126,7 +126,7 @@ if menu == "📝 Nieuwe Registratie":
             else:
                 st.error("Gelieve alle verplichte velden (*) in te vullen en een geldig tijdstip te selecteren.")
 
-# --- DOSSIERBEHEER (GEORGANISEERD OVERZICHT) ---
+# --- DOSSIERBEHEER ---
 elif menu == "📋 Dossierbeheer":
     st.header("Centraal Dossierbeheer")
     res = supabase.table("aanvragen").select("*").order('id', desc=True).execute()
@@ -142,7 +142,7 @@ elif menu == "📋 Dossierbeheer":
         sel_id = st.selectbox("Selecteer dossiernummer voor volledige inzage", df['id'].tolist())
         reg = next(item for item in res.data if item['id'] == sel_id)
 
-        st.subheader(f"Dossier-overzicht: {reg['id']}")
+        st.subheader(f"Dossier-overzicht: {reg['id']}") #
         col_x, col_y = st.columns(2)
         with col_x:
             st.write(f"**Cliënt:** {reg['voornaam']} {reg['achternaam']}")
