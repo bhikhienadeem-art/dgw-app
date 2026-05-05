@@ -99,7 +99,6 @@ else:
 if menu == "📝 Nieuwe Registratie":
     col_l, col_r = st.columns([1, 4])
     with col_l:
-        # Logo via directe GitHub link voor stabiliteit
         st.image("https://raw.githubusercontent.com/bhikhienadeem-art/dgw-app/main/orgineel%20logo%20Centrum.png", width=120)
     with col_r:
         st.title("Registratie Dienst Grondzaken Wanica Centrum")
@@ -188,7 +187,6 @@ elif menu == "📋 Dossierbeheer":
                 st.success("Dossier bijgewerkt.")
                 st.rerun()
         with btn_c2:
-            # Verwijderknop hersteld
             if st.button(f"🗑️ Verwijder Dossier #{sel_id}", type="secondary", use_container_width=True):
                 supabase.table("aanvragen").delete().eq("id", sel_id).execute()
                 st.warning(f"Dossier {sel_id} is verwijderd.")
@@ -207,22 +205,46 @@ elif menu == "📅 Agenda":
     if res.data:
         st.table(pd.DataFrame(res.data).sort_values('afspraak_datum'))
 
+# --- 8. SYSTEEMBEHEER (HERSTELD) ---
 elif menu == "⚙️ Systeembeheer":
+    st.header("⚙️ Systeembeheer")
     if st.session_state.role == 'admin':
         st.subheader("Medewerkersbeheer")
-        with st.expander("➕ Nieuwe Medewerker"):
-            u = st.text_input("Naam")
-            p = st.text_input("Wachtwoord", type="password")
-            r = st.selectbox("Rol", ["user", "admin"])
-            if st.button("Opslaan"):
-                supabase.table("medewerkers").insert({"gebruikersnaam": u, "wachtwoord": p, "rol": r}).execute()
-                st.rerun()
         
+        # Sectie voor het toevoegen van nieuwe medewerkers
+        with st.expander("➕ Nieuwe Medewerker Toevoegen"):
+            new_user = st.text_input("Gebruikersnaam")
+            new_pass = st.text_input("Wachtwoord", type="password")
+            new_role = st.selectbox("Rol", ["user", "admin"])
+            if st.button("Medewerker Opslaan"):
+                if new_user and new_pass:
+                    supabase.table("medewerkers").insert({
+                        "gebruikersnaam": new_user, 
+                        "wachtwoord": new_pass, 
+                        "rol": new_role
+                    }).execute()
+                    st.success(f"Medewerker {new_user} toegevoegd!")
+                    st.rerun()
+                else:
+                    st.error("Vul alle velden in.")
+
+        st.divider()
+        
+        # Lijst van huidige medewerkers tonen
+        st.subheader("Huidige Medewerkers")
         res_m = supabase.table("medewerkers").select("*").execute()
         if res_m.data:
             for m in res_m.data:
-                cm1, cm2 = st.columns([3, 1])
-                cm1.write(f"👤 {m['gebruikersnaam']} ({m['rol']})")
-                if cm2.button("Wis", key=f"m_{m['id']}"):
-                    supabase.table("medewerkers").delete().eq("id", m['id']).execute()
-                    st.rerun()
+                col_m1, col_m2 = st.columns([3, 1])
+                with col_m1:
+                    st.write(f"👤 **{m['gebruikersnaam']}** | Rol: `{m['rol']}`")
+                with col_m2:
+                    # Medewerkers verwijderen
+                    if st.button("Wis", key=f"med_{m['id']}", use_container_width=True):
+                        supabase.table("medewerkers").delete().eq("id", m['id']).execute()
+                        st.warning(f"Gebruiker {m['gebruikersnaam']} verwijderd.")
+                        st.rerun()
+        else:
+            st.info("Geen medewerkers gevonden.")
+    else:
+        st.error("U heeft geen admin-rechten om deze pagina te bekijken.")
