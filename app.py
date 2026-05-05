@@ -45,7 +45,7 @@ if not st.session_state.logged_in:
 menu = st.sidebar.radio("Hoofdmenu", ["📝 Nieuwe Registratie", "📋 Dossierbeheer"] if st.session_state.logged_in else ["📝 Nieuwe Registratie"])
 
 if menu == "📝 Nieuwe Registratie":
-    st.header("Officiële Registratie Dienst Grondzaken Wanica Centrum")
+    st.header("Registratie Dienst Grondzaken Wanica Centrum")
     
     # We plaatsen de tijdsloten BUITEN het formulier voor betere interactie
     col1, col2 = st.columns(2)
