@@ -14,7 +14,7 @@ with st.sidebar:
     logo_path = "orgineel logo Centrum.png"
     if os.path.exists(logo_path):
         st.image(logo_path, use_container_width=True)
-    st.markdown("<h2 style='text-align: center;'>Dienst gRONDZAKEN Wanica Centrum</h2>", unsafe_allow_html=True)
+    st.markdown("<h2 style='text-align: center;'>Dienst Grondzaken Wanica Centrum</h2>", unsafe_allow_html=True)
     st.divider()
 
 # --- 2. AUTHENTICATIE & STATE ---
