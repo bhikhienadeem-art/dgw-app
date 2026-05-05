@@ -72,30 +72,29 @@ if menu == "📝 Nieuwe Registratie":
         st.divider()
         
         st.markdown("### Planning Bezoekafspraak")
-        # Jouw tekst hersteld
+        # Jouw tekst precies teruggezet
         st.info("Voor een persoonlijke toelichting op uw dossier kunt u hieronder een afspraak inplannen. De bezoekuren zijn uitsluitend vastgesteld op maandag en woensdag.")
         
         datum = st.date_input("Gewenste datum", min_value=datetime.date.today())
         
-        # VERBETERDE DAG-LOGICA (0=Maandag, 2=Woensdag)
-        gekozen_dag = datum.weekday()
-        
+        # LOGICA VOOR TIJDSLOTEN (0=Maandag, 2=Woensdag)
         tijd_keuze = "---"
-        if gekozen_dag == 0 or gekozen_dag == 2:
-            # Tijdsloten van 15 minuten tussen 08:00 en 14:30
+        if datum.weekday() in [0, 2]:
+            # Blokken van 15 min tussen 08:00 en 14:30
             tijdsblokken = [f"{h:02d}:{m:02d}" for h in range(8, 15) for m in (0, 15, 30, 45) if not (h == 14 and m > 30)]
             
             try:
-                # Alleen beschikbare tijden ophalen
+                # Controleer bezette tijden in database
                 res_t = supabase.table("aanvragen").select("afspraak_tijd").eq("afspraak_datum", str(datum)).execute()
                 bezet = [r['afspraak_tijd'] for r in res_t.data] if res_t.data else []
                 vrije_blokken = [t for t in tijdsblokken if t not in bezet]
                 
+                # DEZE SELECTBOX MOET ZICHTBAAR WORDEN
                 tijd_keuze = st.selectbox("Beschikbare tijdstippen (15 min per consult)", ["---"] + vrije_blokken)
             except Exception as e:
-                st.error(f"Fout bij ophalen beschikbaarheid: {e}")
+                st.error(f"Fout bij laden tijden: {e}")
         else:
-            # Waarschuwing als het geen Ma of Wo is
+            # Toon alleen waarschuwing als het NIET Ma/Wo is
             st.warning("Bezoekafspraken zijn enkel mogelijk op maandag en woensdag.")
 
         if st.form_submit_button("Registratie Definitief Indienen"):
@@ -108,9 +107,9 @@ if menu == "📝 Nieuwe Registratie":
                     }).execute()
                     st.success("✅ Uw registratie is succesvol ontvangen.")
                 except Exception as e:
-                    st.error(f"Systeemfout bij opslaan: {e}")
+                    st.error(f"Fout bij opslaan: {e}")
             else:
-                st.error("Vul alle verplichte velden in en selecteer een geldig tijdstip.")
+                st.error("Vul alle verplichte velden in en kies een geldig tijdstip.")
 
 elif menu == "📋 Dossierbeheer":
     st.header("Centraal Dossierbeheer")
