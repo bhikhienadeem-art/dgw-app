@@ -80,6 +80,7 @@ if st.session_state.logged_in:
 menu = st.sidebar.radio("Hoofdmenu", menu_options)
 
 if st.session_state.logged_in:
+    st.sidebar.write(f"Ingelogd als: **{st.session_state.user}** ({st.session_state.role})")
     if st.sidebar.button("🚪 Afmelden"):
         st.session_state.update({'logged_in': False, 'role': None, 'user': None})
         st.rerun()
@@ -92,7 +93,7 @@ else:
         if st.button("Inloggen"):
             user = next((u for u in res_m.data if u['gebruikersnaam'] == u_sel), None)
             if user and user['wachtwoord'] == p_inp:
-                st.session_state.update({'logged_in': True, 'role': user['rol'], 'user': u_sel})
+                st.session_state.update({'logged_in': True, 'role': str(user['rol']).lower(), 'user': u_sel})
                 st.rerun()
 
 # --- 5. REGISTRATIE PAGINA ---
@@ -146,7 +147,7 @@ if menu == "📝 Nieuwe Registratie":
 
 # --- 6. DOSSIERBEHEER ---
 elif menu == "📋 Dossierbeheer":
-    st.header("📋 Dossierbeheer & Cliëntgegevens")
+    st.header("📋 Dossierbeheer")
     res = supabase.table("aanvragen").select("*").order('id', desc=True).execute()
     if res.data:
         df = pd.DataFrame(res.data)
@@ -189,25 +190,24 @@ elif menu == "📋 Dossierbeheer":
         with btn_c2:
             if st.button(f"🗑️ Verwijder Dossier #{sel_id}", type="secondary", use_container_width=True):
                 supabase.table("aanvragen").delete().eq("id", sel_id).execute()
-                st.warning(f"Dossier {sel_id} is verwijderd.")
                 st.rerun()
 
-# --- 7. OVERIGE MODULES ---
+# --- 7. RAPPORTAGES & AGENDA ---
 elif menu == "📊 Rapportages":
     res = supabase.table("aanvragen").select("*").execute()
     if res.data:
         df = pd.DataFrame(res.data)
         st.dataframe(df, use_container_width=True)
-        st.download_button("📥 Download Rapport (CSV)", df.to_csv(index=False).encode('utf-8'), "DGW_Export.csv", "text/csv")
 
 elif menu == "📅 Agenda":
     res = supabase.table("aanvragen").select("voornaam, achternaam, afspraak_datum, afspraak_tijd, status").execute()
     if res.data:
         st.table(pd.DataFrame(res.data).sort_values('afspraak_datum'))
 
-# --- 8. SYSTEEMBEHEER ---
+# --- 8. SYSTEEMBEHEER (VOLLEDIG HERSTELD) ---
 elif menu == "⚙️ Systeembeheer":
     st.header("⚙️ Systeembeheer")
+    # Controleer of rol 'admin' is (geforceerd naar lowercase voor veiligheid)
     if st.session_state.role == 'admin':
         st.subheader("Medewerkersbeheer")
         
@@ -217,27 +217,19 @@ elif menu == "⚙️ Systeembeheer":
             new_role = st.selectbox("Rol", ["user", "admin"])
             if st.button("Medewerker Opslaan"):
                 if new_user and new_pass:
-                    supabase.table("medewerkers").insert({
-                        "gebruikersnaam": new_user, 
-                        "wachtwoord": new_pass, 
-                        "rol": new_role
-                    }).execute()
+                    supabase.table("medewerkers").insert({"gebruikersnaam": new_user, "wachtwoord": new_pass, "rol": new_role}).execute()
                     st.success(f"Medewerker {new_user} toegevoegd!")
                     st.rerun()
-                else:
-                    st.error("Vul alle velden in.")
 
         st.divider()
-        st.subheader("Huidige Medewerkers")
         res_m = supabase.table("medewerkers").select("*").execute()
         if res_m.data:
             for m in res_m.data:
-                col_m1, col_m2 = st.columns([3, 1])
-                with col_m1:
-                    st.write(f"👤 **{m['gebruikersnaam']}** | Rol: `{m['rol']}`")
-                with col_m2:
-                    if st.button("Wis", key=f"med_{m['id']}", use_container_width=True):
-                        supabase.table("medewerkers").delete().eq("id", m['id']).execute()
-                        st.rerun()
+                cm1, cm2 = st.columns([3, 1])
+                cm1.write(f"👤 **{m['gebruikersnaam']}** | Rol: `{m['rol']}`")
+                if cm2.button("Wis", key=f"med_{m['id']}"):
+                    supabase.table("medewerkers").delete().eq("id", m['id']).execute()
+                    st.rerun()
     else:
-        st.error("U heeft geen admin-rechten om deze pagina te bekijken.")
+        # Foutmelding als rol geen admin is
+        st.error(f"U bent ingelogd als '{st.session_state.role}'. U heeft 'admin' rechten nodig voor deze pagina.")
