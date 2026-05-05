@@ -102,7 +102,7 @@ if menu == "📝 Nieuwe Registratie":
         datum = st.date_input("Kies een datum", min_value=datetime.date.today())
         
         tijd_keuze = None
-        if datum.weekday() in [0, 2]:
+        if datum.weekday() in [0, 2]: # Maandag = 0, Woensdag = 2
             tijdsblokken = [f"{h:02d}:{m:02d}" for h in range(8, 15) for m in (0, 15, 30, 45) if not (h == 14 and m > 30)]
             res_t = supabase.table("aanvragen").select("afspraak_tijd").eq("afspraak_datum", str(datum)).execute()
             bezet = [r['afspraak_tijd'] for r in res_t.data] if res_t.data else []
@@ -120,11 +120,11 @@ if menu == "📝 Nieuwe Registratie":
                     }).execute()
                     st.success("✅ Uw registratie is succesvol verwerkt!")
                 except Exception as e:
-                    st.error(f"Fout: {e}")
+                    st.error(f"Fout bij opslaan: {e}")
             else:
-                st.error("Vul alle verplichte velden in en kies een tijdstip.")
+                st.error("Vul alle verplichte velden in en kies een geldig tijdstip.")
 
-# --- DOSSIERBEHEER (WERKEND & UITGEBREID) ---
+# --- DOSSIERBEHEER (VERBETERD OVERZICHT) ---
 elif menu == "📋 Dossierbeheer":
     st.header("📋 Dossierbeheer")
     res = supabase.table("aanvragen").select("*").order('id', desc=True).execute()
@@ -137,52 +137,64 @@ elif menu == "📋 Dossierbeheer":
         sel_id = st.selectbox("Selecteer Dossier ID voor alle details", df['id'].tolist())
         reg = next(item for item in res.data if item['id'] == sel_id)
 
-        # Toon ALLE gegevens van de cliënt
         st.subheader(f"Details van dossier: {reg['id']}")
-        col_a, col_b = st.columns(2)
-        with col_a:
-            st.write(f"**Volledige Naam:** {reg['voornaam']} {reg['achternaam']}")
+        col_x, col_y = st.columns(2)
+        with col_x:
+            st.write(f"**Naam:** {reg['voornaam']} {reg['achternaam']}")
             st.write(f"**ID-Nummer:** {reg['id_nummer']}")
-            st.write(f"**E-mail:** {reg['email']}")
             st.write(f"**Telefoon:** {reg['telefoon']}")
-            st.write(f"**LAD Nummer:** {reg.get('lad_nummer') or 'N.v.t.'}")
-        with col_b:
+            st.write(f"**E-mail:** {reg['email']}")
+        with col_y:
             st.write(f"**Afspraakdatum:** {reg['afspraak_datum']}")
             st.write(f"**Afspraaktijd:** {reg['afspraak_tijd']}")
-            st.write(f"**Huidige Status:** {reg['status']}")
-            st.markdown("**Omschrijving van het verzoek:**")
-            st.info(reg['bericht'])
+            st.write(f"**Status:** {reg['status']}")
+            st.info(f"**Bericht:** {reg['bericht']}")
 
-        # Formulier voor status-updates
-        with st.form("update_form"):
+        with st.form("update_dossier_form"):
             nieuwe_status = st.selectbox("Status aanpassen", ["Bevestigd", "In behandeling", "Afgehandeld", "Geannuleerd"], 
                                        index=["Bevestigd", "In behandeling", "Afgehandeld", "Geannuleerd"].index(reg['status']))
-            intern_verslag = st.text_area("Intern Verslag / Notities", value=str(reg.get('intern_verslag') or ""))
-            
+            intern_verslag = st.text_area("Intern Verslag", value=str(reg.get('intern_verslag') or ""))
             if st.form_submit_button("Wijzigingen Opslaan"):
-                supabase.table("aanvragen").update({
-                    "status": nieuwe_status, 
-                    "intern_verslag": intern_verslag
-                }).eq("id", sel_id).execute()
-                st.success("Dossier succesvol bijgewerkt!")
+                supabase.table("aanvragen").update({"status": nieuwe_status, "intern_verslag": intern_verslag}).eq("id", sel_id).execute()
+                st.success("Dossier bijgewerkt!")
                 st.rerun()
     else:
-        st.info("Er zijn nog geen registraties aanwezig.")
+        st.info("Er zijn geen dossiers gevonden.")
 
-# --- OVERIGE PAGINA'S ---
 elif menu == "📅 Agenda":
     st.header("📅 Agenda")
     res = supabase.table("aanvragen").select("*").execute()
     if res.data:
         events = [{"title": f"{r['voornaam']} {r['achternaam']}", "start": r['afspraak_datum']} for r in res.data]
         calendar(events=events)
+    else:
+        st.info("De agenda is momenteel leeg.")
+
+elif menu == "📊 Rapportages":
+    st.header("📊 Rapportages")
+    res = supabase.table("aanvragen").select("*").execute()
+    if res.data:
+        df = pd.DataFrame(res.data)
+        st.dataframe(df)
+        st.download_button("Download Data (CSV)", df.to_csv(index=False).encode('utf-8'), "rapportage.csv", "text/csv")
 
 elif menu == "⚙️ Systeeminstellingen":
     st.header("⚙️ Systeeminstellingen")
+    st.subheader("Medewerkersoverzicht")
     res_m = supabase.table("medewerkers").select("*").execute()
     if res_m.data:
         for m in res_m.data:
             st.write(f"👤 {m['gebruikersnaam']} ({m['rol']})")
     
-    with st.form("add_staff"):
-        u = st.text_input("
+    st.divider()
+    with st.form("add_user_form"):
+        u = st.text_input("Nieuwe Gebruikersnaam")
+        p = st.text_input("Wachtwoord", type="password")
+        r = st.selectbox("Rol", ["Medewerker", "Admin"])
+        if st.form_submit_button("Account Toevoegen"):
+            if u and p:
+                supabase.table("medewerkers").insert({"gebruikersnaam": u, "wachtwoord": p, "rol": r}).execute()
+                st.success("Account aangemaakt!")
+                st.rerun()
+            else:
+                st.error("Vul alle velden in.")
