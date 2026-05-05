@@ -22,7 +22,7 @@ with st.sidebar:
 if 'logged_in' not in st.session_state:
     st.session_state.update({'logged_in': False, 'role': None, 'user': None})
 
-# Login sectie in Sidebar (Hersteld)
+# Login sectie voor medewerkers
 if not st.session_state.logged_in:
     with st.sidebar:
         st.subheader("🔐 Portaal voor Medewerkers")
@@ -72,7 +72,6 @@ if menu == "📝 Nieuwe Registratie":
         st.divider()
         
         st.markdown("### Planning Bezoekafspraak")
-        # Jouw professionele tekst
         st.info("Voor een persoonlijke toelichting op uw dossier kunt u hieronder een afspraak inplannen. De bezoekuren zijn uitsluitend vastgesteld op maandag en woensdag.")
         
         datum = st.date_input("Gewenste datum", min_value=datetime.date.today())
@@ -120,7 +119,7 @@ elif menu == "📋 Dossierbeheer":
         st.subheader(f"Details van dossier: {reg['id']}")
         
         with st.form("update_status"):
-            n_status = st.selectbox("Status", ["Bevestigd", "In behandeling", "Afgehandeld", "Geannuleerd"], index=0)
+            n_status = st.selectbox("Status", ["Bevestigd", "In behandeling", "Afgehandeld", "Geannuleerd"])
             if st.form_submit_button("Bijwerken"):
                 supabase.table("aanvragen").update({"status": n_status}).eq("id", sel_id).execute()
                 st.success("Status aangepast!")
