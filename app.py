@@ -148,81 +148,82 @@ else:
             df_ag = pd.DataFrame(res.data)
             st.dataframe(df_ag[['afspraak_datum', 'afspraak_tijd', 'voornaam', 'achternaam', 'status']], use_container_width=True)
 
-  elif menu == "📋 Dossierbeheer":
+elif menu == "📋 Dossierbeheer":
     st.header("📋 Dossierbeheer")
     
-    # Gegevens ophalen uit de database
+    # 1. Haal alle dossiers op uit de database
     res = supabase.table("aanvragen").select("*").order('id', desc=True).execute()
     
     if res.data:
         df = pd.DataFrame(res.data)
-        # Toon overzichtstabel
+        # Toon overzichtstabel bovenaan
         st.dataframe(df[['id', 'voornaam', 'achternaam', 'status', 'afspraak_datum']], use_container_width=True)
         
+        # 2. Dossier selecteren
         sel_id = st.selectbox("Selecteer Dossier ID", df['id'].tolist())
         d = next(item for item in res.data if item['id'] == sel_id)
         
         st.markdown(f"### 📄 Dossier #{sel_id}: {d['voornaam']} {d['achternaam']}")
         
-        col1, col2 = st.columns(2)
-        with col1:
+        col_info1, col_info2 = st.columns(2)
+        with col_info1:
             st.write(f"**ID-nummer:** {d.get('id_nummer', 'N/A')}")
             st.write(f"**E-mail:** {d['email']}")
-        with col2:
+        with col_info2:
             st.write(f"**Afspraak:** {d['afspraak_datum']} om {d.get('afspraak_tijd', 'N/A')}")
         
         st.info(f"**Klacht van cliënt:** {d['bericht']}")
         st.divider()
         
-        # --- Beheersectie ---
-        c_left, c_right = st.columns(2)
+        # 3. BEHEERSECTIE (Interne notitie + E-mail naar cliënt)
+        col_left, col_right = st.columns(2)
         
-        with c_left:
+        with col_left:
             st.subheader("📝 Interne Notitie")
             n_status = st.selectbox(
-                "Status Bijwerken", 
+                "Update Status", 
                 ["In behandeling", "Wacht op documenten", "Bevestigd", "Afgehandeld"],
                 index=["In behandeling", "Wacht op documenten", "Bevestigd", "Afgehandeld"].index(d['status']) if d['status'] in ["In behandeling", "Wacht op documenten", "Bevestigd", "Afgehandeld"] else 0
             )
-            # Bericht voor de medewerker zelf
-            interne_toelichting = st.text_area(
+            # Dit is alleen voor de medewerker zelf
+            interne_notitie = st.text_area(
                 "Bericht voor medewerker (Intern)", 
                 value=d.get('medewerker_toelichting', ""), 
-                help="Alleen zichtbaar voor medewerkers."
+                help="Dit bericht is alleen zichtbaar in het systeem."
             )
         
-        with c_right:
+        with col_right:
             st.subheader("📧 Bericht naar Cliënt")
-            # Bericht dat per mail naar de cliënt gaat
-            mail_tekst = st.text_area(
+            # Dit wordt per mail verzonden
+            mail_bericht = st.text_area(
                 "Bericht voor cliënt (E-mail)", 
-                placeholder="Typ hier de tekst die de cliënt per mail moet ontvangen..."
+                placeholder="Typ hier de tekst die naar de cliënt gemaild moet worden..."
             )
 
-        # Actie knoppen
-        btn_1, btn_2 = st.columns(2)
-        with btn_1:
+        # 4. ACTIE KNOPPEN
+        btn_col1, btn_col2 = st.columns(2)
+        with btn_col1:
             if st.button("💾 BIJWERKEN & MAILEN", use_container_width=True):
-                # Update database
+                # Update database (status en interne notitie)
                 supabase.table("aanvragen").update({
                     "status": n_status, 
-                    "medewerker_toelichting": interne_toelichting
+                    "medewerker_toelichting": interne_notitie
                 }).eq("id", sel_id).execute()
                 
-                # Verzend mail als er tekst is ingevoerd
-                if mail_tekst:
-                    onderwerp = f"Update Grondzaken Dossier #{sel_id}"
-                    inhoud = f"Geachte {d['voornaam']} {d['achternaam']},\n\nUw dossier #{sel_id} is bijgewerkt.\n\nBericht:\n{mail_tekst}\n\nStatus: {n_status}"
+                # Verzend mail naar cliënt als er tekst is ingevuld
+                if mail_bericht:
+                    onderwerp = f"Update betreffende uw dossier #{sel_id}"
+                    inhoud = f"Beste {d['voornaam']},\n\nUw dossier status is nu: {n_status}.\n\nBericht:\n{mail_bericht}"
                     stuur_mail(d['email'], onderwerp, inhoud)
-                    st.success("Dossier bijgewerkt en bericht naar cliënt verzonden!")
+                    st.success("Dossier bijgewerkt en mail verzonden!")
                 else:
-                    st.success("Interne notitie en status succesvol bijgewerkt.")
+                    st.success("Dossier succesvol bijgewerkt.")
                 st.rerun()
                 
-        with btn_2:
+        with btn_col2:
             if st.button(f"🗑️ VERWIJDER DOSSIER #{sel_id}", type="secondary", use_container_width=True):
                 supabase.table("aanvragen").delete().eq("id", sel_id).execute()
-                st.warning(f"Dossier {sel_id} is verwijderd.")
+                st.warning(f"Dossier {sel_id} verwijderd.")
                 st.rerun()
     else:
         st.info("Geen dossiers gevonden.")
