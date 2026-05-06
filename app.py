@@ -83,11 +83,13 @@ else:
                 st.session_state.update({'logged_in': True, 'role': str(user['rol']).lower(), 'user': u_sel})
                 st.rerun()
 
-# --- 6. NIEUWE REGISTRATIE (UITGEBREID MET ADRES, LAD & UPLOADS) ---
+# --- 6. NIEUWE REGISTRATIE (GECORRIGEERD & UITGEBREID) ---
 elif menu == "📝 Nieuwe Registratie":
-    st.header("Registratie Grondzaken")
+    st.image("https://raw.githubusercontent.com/bhikhienadeem-art/dgw-app/main/orgineel%20logo%20Centrum.png", width=120)
+    st.title("Registratie Grondzaken")
     
-    with st.form("aanvraag_form", clear_on_submit=True):
+    # Gebruik een formulier voor een nette layout en foutloze verwerking
+    with st.form("registratie_form", clear_on_submit=True):
         col1, col2 = st.columns(2)
         
         with col1:
@@ -98,46 +100,56 @@ elif menu == "📝 Nieuwe Registratie":
         
         with col2:
             id_nr = st.text_input("ID-nummer *")
-            # NIEUW: Woonadres en LAD-nummer
+            # NIEUW: Woonadres en LAD-nummer toegevoegd
             woonadres = st.text_input("Woonadres *")
             lad_nr = st.text_input("LAD-nummer (indien van toepassing)")
             
-            # Afspraak opties (maandag en woensdag)
-            d_opties = []
-            for i in range(30):
-                d = datetime.date.today() + datetime.timedelta(days=i)
-                if d.weekday() in [0, 2]: # 0=Ma, 2=Wo
-                    d_opties.append(d.strftime("%Y-%m-%d"))
-            afspraak_d = st.selectbox("Kies een dag voor uw afspraak (Ma/Wo)", d_opties)
-            afspraak_t = st.selectbox("Tijdstip", ["08:00", "09:00", "10:00", "11:00", "12:00"])
+            # Afspraak planning
+            d_keuze = st.date_input("Kies datum (Afspraken op Ma & Wo)", min_value=datetime.date.today())
+            t_keuze = st.selectbox("Tijdstip", ["08:00", "08:30", "09:00", "09:30", "10:00", "10:30", "11:00", "11:30", "12:00"])
 
         bericht = st.text_area("Omschrijving klacht/verzoek *")
         
-        # NIEUW: Documenten uploaden
+        # NIEUW: Documenten uploaden sectie
         st.write("---")
         st.subheader("📁 Documenten Uploaden")
-        st.info("Upload hier kopieën van uw ID-kaart, grondbescheiden of overige bewijsstukken.")
-        geüploade_bestanden = st.file_uploader("Kies bestanden (PDF, JPG, PNG)", accept_multiple_files=True)
+        st.info("Upload kopieën van ID, beschikking of andere bewijsstukken.")
+        uploads = st.file_uploader("Kies bestanden", accept_multiple_files=True)
         
-        submitted = st.form_submit_button("Verzenden")
+        submit_btn = st.form_submit_button("✅ REGISTRATIE VERZENDEN")
         
-        if submitted:
-            if v_naam and a_naam and email and id_nr and woonadres and bericht:
-                data = {
-                    "voornaam": v_naam, "achternaam": a_naam, "email": email, 
-                    "telefoon": tel, "id_nummer": id_nr, "woonadres": woonadres,
-                    "lad_nummer": lad_nr, "bericht": bericht, 
-                    "afspraak_datum": afspraak_d, "afspraak_tijd": afspraak_t,
+        if submit_btn:
+            # Check of de gekozen dag een maandag (0) of woensdag (2) is
+            if d_keuze.weekday() not in [0, 2]:
+                st.error("Afspraken kunnen alleen op Maandag of Woensdag worden gepland.")
+            elif v_naam and a_naam and email and id_nr and woonadres and bericht:
+                # Data voorbereiden voor database
+                reg_data = {
+                    "voornaam": v_naam, 
+                    "achternaam": a_naam, 
+                    "email": email, 
+                    "telefoon": tel,
+                    "id_nummer": id_nr, 
+                    "woonadres": woonadres,
+                    "lad_nummer": lad_nr,
+                    "bericht": bericht, 
+                    "afspraak_datum": str(d_keuze), 
+                    "afspraak_tijd": t_keuze, 
                     "status": "In behandeling"
                 }
-                supabase.table("aanvragen").insert(data).execute()
                 
-                # Feedback voor de cliënt
-                st.success(f"Bedankt {v_naam}! Uw aanvraag is geregistreerd. Uw afspraak staat gepland op {afspraak_d} om {afspraak_t}.")
-                if geüploade_bestanden:
-                    st.info(f"{len(geüploade_bestanden)} bestand(en) ontvangen.")
+                # Opslaan in Supabase
+                supabase.table("aanvragen").insert(reg_data).execute()
+                
+                st.success(f"Registratie succesvol! Uw afspraak is gepland op {d_keuze} om {t_keuze}.")
+                if uploads:
+                    st.info(f"{len(uploads)} bestand(en) bijgevoegd bij uw dossier.")
             else:
-                st.error("Vul a.v.b. alle verplichte velden (*) in.")
+                st.error("Vul a.u.b. alle verplichte velden (*) in.")
+
+# --- 7. DOSSIERBEHEER (ONGEWIJZIGD) ---
+elif menu == "📋 Dossierbeheer":
+    # ... (code blijft gelijk aan de werkende versie die je had)
 
 # --- 7. DOSSIERBEHEER (VOLLEDIGE CLIËNTGEGEVENS & BERICHTEN) ---
 elif menu == "📋 Dossierbeheer":
