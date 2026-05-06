@@ -83,12 +83,11 @@ else:
                 st.session_state.update({'logged_in': True, 'role': str(user['rol']).lower(), 'user': u_sel})
                 st.rerun()
 
-# --- 6. NIEUWE REGISTRATIE (GECORRIGEERD & UITGEBREID) ---
+# --- 6. NIEUWE REGISTRATIE (HERSTELD & UITGEBREID) ---
 elif menu == "📝 Nieuwe Registratie":
     st.image("https://raw.githubusercontent.com/bhikhienadeem-art/dgw-app/main/orgineel%20logo%20Centrum.png", width=120)
     st.title("Registratie Grondzaken")
     
-    # Gebruik een formulier voor een nette layout en foutloze verwerking
     with st.form("registratie_form", clear_on_submit=True):
         col1, col2 = st.columns(2)
         
@@ -100,52 +99,41 @@ elif menu == "📝 Nieuwe Registratie":
         
         with col2:
             id_nr = st.text_input("ID-nummer *")
-            # NIEUW: Woonadres en LAD-nummer toegevoegd
+            # Nieuwe verplichte velden
             woonadres = st.text_input("Woonadres *")
-            lad_nr = st.text_input("LAD-nummer (indien van toepassing)")
+            lad_nr = st.text_input("LAD-nummer")
             
-            # Afspraak planning
-            d_keuze = st.date_input("Kies datum (Afspraken op Ma & Wo)", min_value=datetime.date.today())
-            t_keuze = st.selectbox("Tijdstip", ["08:00", "08:30", "09:00", "09:30", "10:00", "10:30", "11:00", "11:30", "12:00"])
+            # Afspraakplanning (Maandag & Woensdag)
+            d_keuze = st.date_input("Kies datum", min_value=datetime.date.today())
+            t_keuze = st.selectbox("Tijdstip", ["08:00", "09:00", "10:00", "11:00", "12:00"])
 
         bericht = st.text_area("Omschrijving klacht/verzoek *")
         
-        # NIEUW: Documenten uploaden sectie
+        # Documenten uploaden
         st.write("---")
         st.subheader("📁 Documenten Uploaden")
-        st.info("Upload kopieën van ID, beschikking of andere bewijsstukken.")
-        uploads = st.file_uploader("Kies bestanden", accept_multiple_files=True)
+        uploads = st.file_uploader("Kies bestanden (ID, grondbescheiden, etc.)", accept_multiple_files=True)
         
         submit_btn = st.form_submit_button("✅ REGISTRATIE VERZENDEN")
         
         if submit_btn:
-            # Check of de gekozen dag een maandag (0) of woensdag (2) is
+            # Validatie op dagen
             if d_keuze.weekday() not in [0, 2]:
-                st.error("Afspraken kunnen alleen op Maandag of Woensdag worden gepland.")
+                st.error("Let op: Afspraken zijn alleen mogelijk op maandag of woensdag.")
             elif v_naam and a_naam and email and id_nr and woonadres and bericht:
-                # Data voorbereiden voor database
                 reg_data = {
-                    "voornaam": v_naam, 
-                    "achternaam": a_naam, 
-                    "email": email, 
-                    "telefoon": tel,
-                    "id_nummer": id_nr, 
-                    "woonadres": woonadres,
-                    "lad_nummer": lad_nr,
-                    "bericht": bericht, 
-                    "afspraak_datum": str(d_keuze), 
-                    "afspraak_tijd": t_keuze, 
+                    "voornaam": v_naam, "achternaam": a_naam, "email": email, 
+                    "telefoon": tel, "id_nummer": id_nr, "woonadres": woonadres,
+                    "lad_nummer": lad_nr, "bericht": bericht, 
+                    "afspraak_datum": str(d_keuze), "afspraak_tijd": t_keuze,
                     "status": "In behandeling"
                 }
-                
-                # Opslaan in Supabase
                 supabase.table("aanvragen").insert(reg_data).execute()
-                
-                st.success(f"Registratie succesvol! Uw afspraak is gepland op {d_keuze} om {t_keuze}.")
+                st.success(f"Registratie voltooid! Afspraak op {d_keuze} om {t_keuze}.")
                 if uploads:
-                    st.info(f"{len(uploads)} bestand(en) bijgevoegd bij uw dossier.")
+                    st.info(f"{len(uploads)} bestand(en) succesvol klaargezet voor verwerking.")
             else:
-                st.error("Vul a.u.b. alle verplichte velden (*) in.")
+                st.error("Vul a.u.b. alle velden met een * in.")
 
 # --- 7. DOSSIERBEHEER (ONGEWIJZIGD) ---
 elif menu == "📋 Dossierbeheer":
