@@ -417,3 +417,74 @@ elif menu == "📅 Agenda":
         st.download_button("📥 Agenda Exporteren (CSV)", csv_ag, "agenda_export.csv", "text/csv")
     else:
         st.info("Er zijn momenteel geen afspraken geregistreerd.")
+        # --- LOGIN & MENU STRUCTUUR (GECORRIGEERD) ---
+if not st.session_state.logged_in:
+    # Keuzemenu voor NIET-ingelogde gebruikers (Cliënten of Medewerkers)
+    publiek_menu = st.sidebar.radio("Hoofdmenu", ["📝 Nieuwe Registratie", "🔐 Medewerker Login"])
+    
+    if publiek_menu == "📝 Nieuwe Registratie":
+        st.image("https://raw.githubusercontent.com/bhikhienadeem-art/dgw-app/main/orgineel%20logo%20Centrum.png", width=120)
+        st.title("Registratie Grondzaken")
+        
+        with st.form("aanvraag_form", clear_on_submit=True):
+            col1, col2 = st.columns(2)
+            with col1:
+                v_naam = st.text_input("Voornaam *")
+                a_naam = st.text_input("Achternaam *")
+                email = st.text_input("E-mailadres *")
+                tel = st.text_input("Telefoonnummer *")
+            with col2:
+                id_nr = st.text_input("ID-nummer *")
+                # NIEUWE VELDEN
+                woonadres = st.text_input("Woonadres *")
+                lad_nr = st.text_input("LAD-nummer")
+                afspraak_d = st.date_input("Kies datum (Ma/Wo)")
+            
+            bericht = st.text_area("Omschrijving klacht/verzoek *")
+            
+            # DOCUMENT UPLOAD
+            st.write("---")
+            st.subheader("📁 Documenten Uploaden")
+            st.info("Upload kopieën van ID of grondbescheiden.")
+            uploads = st.file_uploader("Kies bestanden", accept_multiple_files=True)
+            
+            if st.form_submit_button("✅ REGISTRATIE VERZENDEN"):
+                if v_naam and a_naam and email and woonadres and bericht:
+                    # Opslaan in Supabase
+                    reg_data = {
+                        "voornaam": v_naam, "achternaam": a_naam, "email": email,
+                        "telefoon": tel, "id_nummer": id_nr, "woonadres": woonadres,
+                        "lad_nummer": lad_nr, "bericht": bericht, 
+                        "afspraak_datum": str(afspraak_d), "status": "In behandeling"
+                    }
+                    supabase.table("aanvragen").insert(reg_data).execute()
+                    st.success("Registratie succesvol verzonden!")
+                else:
+                    st.error("Vul a.u.b. alle velden met een * in.")
+                    
+    elif publiek_menu == "🔐 Medewerker Login":
+        # Je bestaande login-functie aanroepen
+        st.header("🔐 Medewerker Login")
+        # (Login code hier...)
+
+else:
+    # MENU VOOR INGELOGDE MEDEWERKERS (Geen SyntaxError meer mogelijk)
+    st.sidebar.success(f"Ingelogd als: {st.session_state.role}")
+    menu = st.sidebar.radio("Navigatie", ["📊 Dashboard", "📅 Agenda", "📋 Dossierbeheer", "⚙️ Systeembeheer"])
+    
+    if st.sidebar.button("Uitloggen"):
+        st.session_state.logged_in = False
+        st.rerun()
+
+    if menu == "📊 Dashboard":
+        # Dashboard code...
+        pass
+    elif menu == "📅 Agenda":
+        # Agenda code...
+        pass
+    elif menu == "📋 Dossierbeheer":
+        # Je bestaande dossierbeheer code
+        pass
+    elif menu == "⚙️ Systeembeheer":
+        # Systeembeheer code...
+        pass
