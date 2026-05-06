@@ -188,13 +188,68 @@ elif menu == "⚙️ Systeembeheer":
                 st.success("Medewerker verwijderd."); st.rerun()
     else: st.error("U heeft geen admin-rechten voor deze pagina.")
 
-# --- 9. RAPPORTAGES & AGENDA ---
+# --- 9. RAPPORTAGES (VOLLEDIGE DETAILS & EXPORT) ---
 elif menu == "📊 Rapportages":
-    st.header("📊 Dashboard")
-    res = supabase.table("aanvragen").select("*").execute()
+    st.header("📊 Uitgebreide Rapportages")
+    
+    # Gegevens ophalen uit de database
+    res = supabase.table("aanvragen").select("*").order('created_at', desc=True).execute()
+    
     if res.data:
         df = pd.DataFrame(res.data)
-        st.plotly_chart(px.pie(df, names='status', title="Status Verdeling", color_discrete_sequence=['#2e7d32', '#81c784', '#d32f2f']), use_container_width=True)
+        
+        # Dashboard Visualisaties (Snel overzicht)
+        col_v1, col_v2 = st.columns(2)
+        with col_v1:
+            fig_pie = px.pie(df, names='status', title="Dossier Status Verdeling", 
+                             color_discrete_sequence=['#2e7d32', '#81c784', '#a5d6a7', '#d32f2f'])
+            st.plotly_chart(fig_pie, use_container_width=True)
+        
+        with col_v2:
+            df['datum_kort'] = pd.to_datetime(df['created_at']).dt.date
+            fig_bar = px.bar(df.groupby('datum_kort').size().reset_index(name='aantal'), 
+                             x='datum_kort', y='aantal', title="Registraties per Dag",
+                             color_discrete_sequence=['#2e7d32'])
+            st.plotly_chart(fig_bar, use_container_width=True)
+
+        st.divider()
+        
+        # Volledige Detail Tabel (Zoals gevraagd)
+        st.subheader("📄 Alle Cliëntgegevens & Dossier Details")
+        
+        # Kolommen hernoemen voor leesbaarheid in de rapportage
+        df_display = df.copy()
+        kolommen_config = {
+            'id': 'Dossier ID',
+            'created_at': 'Registratie Datum',
+            'voornaam': 'Voornaam',
+            'achternaam': 'Achternaam',
+            'email': 'E-mailadres',
+            'id_nummer': 'ID-Nummer',
+            'telefoon': 'Telefoon',
+            'woonadres': 'Adres',
+            'status': 'Status',
+            'bericht': 'Klacht/Omschrijving',
+            'afspraak_datum': 'Afspraak Datum',
+            'afspraak_tijd': 'Tijd'
+        }
+        
+        # Alleen relevante kolommen tonen die in de database zitten
+        beschikbare_kolommen = [k for k in kolommen_config.keys() if k in df_display.columns]
+        df_final = df_display[beschikbare_kolommen].rename(columns=kolommen_config)
+        
+        st.dataframe(df_final, use_container_width=True)
+
+        # Export optie naar Excel/CSV
+        csv = df_final.to_csv(index=False).encode('utf-8')
+        st.download_button(
+            label="📥 Download Alle Details (CSV)",
+            data=csv,
+            file_name=f"rapportage_grondzaken_{datetime.date.today()}.csv",
+            mime="text/csv",
+        )
+    else:
+        st.info("Er zijn nog geen registraties gevonden om te rapporteren.")
 
 elif menu == "📅 Agenda":
     st.header("📅 Agenda")
