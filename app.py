@@ -158,6 +158,22 @@ if menu == "📝 Nieuwe Registratie":
             st.success("Registratie succesvol!")
             st.session_state.selected_time = None
         else: st.error("Vul alle velden in en kies een tijdstip.")
+            # --- CONTACT SECTIE VOOR CLIENTEN ---
+    st.write("") # Extra witruimte
+    st.divider()
+    
+    with st.container():
+        st.subheader("📞 Direct Contact met een medewerker")
+        st.write("Heeft u vragen over uw aanvraag of ondervindt u problemen? Neem contact met ons op:")
+        
+        icon_col, info_col = st.columns([0.1, 0.9])
+        with info_col:
+            st.markdown(f"""
+                <div style="background-color: #f1f8e9; padding: 15px; border-radius: 10px; border-left: 5px solid #2e7d32;">
+                    <p style="margin: 0; color: black;"><b>📧 E-mail:</b> <a href="mailto:wanicacentrum.gz@gmail.com" style="color: #2e7d32;">wanicacentrum.gz@gmail.com</a></p>
+                    <p style="margin: 0; color: black;"><b>📞 Telefoon:</b> +597-366660 / +597-366929</p>
+                </div>
+            """, unsafe_allow_html=True)
 
 elif menu == "📋 Dossierbeheer" and st.session_state.logged_in:
     st.header("📋 Dossierbeheer")
