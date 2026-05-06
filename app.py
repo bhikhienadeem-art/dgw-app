@@ -135,7 +135,7 @@ else:
 # --- 6. REGISTRATIE PAGINA ---
 if menu == "📝 Nieuwe Registratie":
     st.image("https://raw.githubusercontent.com/bhikhienadeem-art/dgw-app/main/orgineel%20logo%20Centrum.png", width=120)
-    st.title("Registratie Grondzaken")
+    st.title("Registratie Dienst Grondzaken Wanica Centrum")
     
     vnaam = st.text_input("Voornaam *")
     anaam = st.text_input("Achternaam *")
