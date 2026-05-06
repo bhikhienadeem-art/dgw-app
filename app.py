@@ -209,8 +209,54 @@ elif menu == "📋 Dossierbeheer" and st.session_state.logged_in:
                 st.rerun()
 
 elif menu == "📊 Rapportages" and st.session_state.logged_in:
+    st.header("📊 Management Rapportages")
+    
     res = supabase.table("aanvragen").select("*").execute()
-    if res.data: st.dataframe(pd.DataFrame(res.data), use_container_width=True)
+    if res.data:
+        df = pd.DataFrame(res.data)
+        
+        # Data voorbereiding voor lijngrafiek
+        df['created_at'] = pd.to_datetime(df['created_at']).dt.date
+        trend_df = df.groupby('created_at').size().reset_index(name='aantal')
+        
+        # Layout met kolommen voor de statistieken
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.subheader("📈 Aanvragen Trend")
+            # Lijngrafiek
+            fig_line = px.line(trend_df, x='created_at', y='aantal', 
+                               title="Aantal aanvragen over tijd",
+                               color_discrete_sequence=['#2e7d32'])
+            fig_line.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)')
+            st.plotly_chart(fig_line, use_container_width=True)
+            
+        with col2:
+            st.subheader("🎯 Status Verdeling")
+            # Cirkeldiagram (Taart)
+            status_df = df['status'].value_counts().reset_index()
+            fig_pie = px.pie(status_df, values='count', names='status', 
+                             color_discrete_sequence=['#2e7d32', '#4caf50', '#81c784', '#a5d6a7'],
+                             hole=0.3)
+            st.plotly_chart(fig_pie, use_container_width=True)
+
+        st.divider()
+        
+        # Uitgebreide Tabel met filters
+        st.subheader("📋 Alle Dossiers")
+        # Zoekbalk voor in de tabel
+        search = st.text_input("🔍 Zoek op naam of ID-nummer", placeholder="Typ om te filteren...")
+        if search:
+            df = df[df['voornaam'].str.contains(search, case=False) | df['id_nummer'].str.contains(search)]
+            
+        st.dataframe(df, use_container_width=True)
+        
+        # Download knop voor Excel/CSV
+        csv = df.to_csv(index=False).encode('utf-8')
+        st.download_button("📥 Exporteer naar Excel (CSV)", data=csv, file_name="grondzaken_rapport.csv", mime="text/csv")
+        
+    else:
+        st.info("Er is nog geen data beschikbaar voor rapportages.")
 
 elif menu == "📅 Agenda" and st.session_state.logged_in:
     res = supabase.table("aanvragen").select("voornaam, achternaam, afspraak_datum, afspraak_tijd, status").execute()
