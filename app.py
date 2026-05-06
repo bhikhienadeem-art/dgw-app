@@ -16,19 +16,33 @@ supabase = create_client(st.secrets["SUPABASE_URL"], st.secrets["SUPABASE_KEY"])
 EMAIL_USER = "wanicacentrum.gz@gmail.com"
 EMAIL_PASS = "kmebjorjujxwqbvo"
 
-# --- 2. STYLING (LEESBAARHEID TITELS & INPUT) ---
+# --- 2. STYLING (HERSTEL LEESBAARHEID HOOFDMENU & REGISTRATIE) ---
 st.markdown("""
     <style>
     .stApp { background-color: white; }
     
-    /* TITELS LEESBAAR MAKEN VOOR CLIËNTEN */
+    /* TITELS & KOPPEN (Registratie Grondzaken) */
     h1, h2, h3, .stTitle { 
-        color: #1b5e20 !important; /* Donkergroen voor maximaal contrast */
+        color: #1b5e20 !important; 
         font-family: 'Segoe UI', sans-serif; 
         font-weight: bold;
     }
     
-    /* INPUT VELDEN LEESBAAR MAKEN */
+    /* HOOFDMENU LEESBAAR MAKEN (Zijbalk) */
+    [data-testid="stSidebar"] {
+        background-color: #f1f8e9 !important;
+    }
+    
+    /* Navigatie labels en Radio-button teksten */
+    [data-testid="stSidebar"] .st-emotion-cache-17l69uz, 
+    [data-testid="stSidebar"] p, 
+    [data-testid="stSidebar"] label {
+        color: #1b5e20 !important; 
+        font-weight: bold !important;
+        font-size: 1rem !important;
+    }
+
+    /* INPUT VELDEN (Witte boxen met zwarte tekst) */
     .stTextInput>div>div>input, .stTextArea>div>div>textarea, .stSelectbox>div>div>div {
         background-color: white !important;
         color: black !important;
@@ -36,13 +50,6 @@ st.markdown("""
         border-radius: 8px !important;
     }
     
-    /* LABELS BOVEN VELDEN */
-    label { 
-        color: #1b5e20 !important; 
-        font-weight: bold !important; 
-        font-size: 1.1rem !important;
-    }
-
     /* GROTE GROENE KNOPPEN */
     div.stButton > button {
         width: 100%;
@@ -53,8 +60,11 @@ st.markdown("""
         height: 3.5em;
         border: none;
     }
-    
-    .stSidebar { background-color: #f1f8e9; }
+
+    /* Specifieke kleur voor Afmelden-knop */
+    div.stButton > button:contains("Afmelden") {
+        background-color: #d32f2f !important;
+    }
     </style>
 """, unsafe_allow_html=True)
 
