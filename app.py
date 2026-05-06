@@ -53,11 +53,91 @@ def stuur_mail(ontvanger, onderwerp, inhoud, bestanden=None):
         return True
     except: return False
 
-# --- 4. STATE & LOGIN ---
+# --- 4. STATE & LOGIN (GECORRIGEERD) ---
 if 'logged_in' not in st.session_state:
     st.session_state.update({'logged_in': False, 'role': None, 'user': None})
 if 'selected_time' not in st.session_state:
     st.session_state.selected_time = None
+
+# --- HOOFDLOGICA ---
+# We gebruiken een zijbalk menu dat verandert op basis van login-status
+if not st.session_state.logged_in:
+    menu_opties = ["📝 Nieuwe Registratie", "🔐 Medewerker Login"]
+    choice = st.sidebar.radio("Hoofdmenu", menu_opties)
+    
+    if choice == "📝 Nieuwe Registratie":
+        st.image("https://raw.githubusercontent.com/bhikhienadeem-art/dgw-app/main/orgineel%20logo%20Centrum.png", width=120)
+        st.title("Registratie Grondzaken")
+        
+        with st.form("aanvraag_form", clear_on_submit=True):
+            col1, col2 = st.columns(2)
+            with col1:
+                v_naam = st.text_input("Voornaam *")
+                a_naam = st.text_input("Achternaam *")
+                email = st.text_input("E-mailadres *")
+                tel = st.text_input("Telefoonnummer *")
+            with col2:
+                id_nr = st.text_input("ID-nummer *")
+                # NIEUW: Woonadres en LAD-nummer
+                woonadres = st.text_input("Woonadres *")
+                lad_nr = st.text_input("LAD-nummer")
+                afspraak_d = st.date_input("Kies een datum")
+            
+            bericht = st.text_area("Omschrijving klacht/verzoek *")
+            
+            # NIEUW: Documenten uploaden
+            st.subheader("📁 Documenten Uploaden")
+            uploads = st.file_uploader("Kies bestanden", accept_multiple_files=True)
+            
+            if st.form_submit_button("Verzenden"):
+                if v_naam and a_naam and email and woonadres and bericht:
+                    # Data opslaan in Supabase
+                    reg_data = {
+                        "voornaam": v_naam, "achternaam": a_naam, "email": email,
+                        "telefoon": tel, "id_nummer": id_nr, "woonadres": woonadres,
+                        "lad_nummer": lad_nr, "bericht": bericht, 
+                        "afspraak_datum": str(afspraak_d), "status": "In behandeling"
+                    }
+                    supabase.table("aanvragen").insert(reg_data).execute()
+                    st.success("Uw registratie is succesvol ontvangen!")
+                else:
+                    st.error("Vul a.u.b. alle verplichte velden (*) in.")
+                    
+    elif choice == "🔐 Medewerker Login":
+        # Hier komt je bestaande login-functie
+        st.subheader("Medewerker Login")
+        user = st.text_input("Gebruikersnaam")
+        pw = st.text_input("Wachtwoord", type="password")
+        if st.button("Inloggen"):
+            # Controleer login bij Supabase (zoals in je eerdere werkende code)
+            res = supabase.table("gebruikers").select("*").eq("gebruikersnaam", user).eq("wachtwoord", pw).execute()
+            if res.data:
+                st.session_state.logged_in = True
+                st.session_state.role = res.data[0]['rol']
+                st.rerun()
+            else:
+                st.error("Onjuiste gegevens")
+
+else:
+    # MENU VOOR INGELOGDE GEBRUIKERS
+    st.sidebar.success(f"Ingelogd als: {st.session_state.role}")
+    menu = st.sidebar.radio("Navigatie", ["📊 Dashboard", "📅 Agenda", "📋 Dossierbeheer", "⚙️ Systeembeheer"])
+    
+    if st.sidebar.button("Uitloggen"):
+        st.session_state.logged_in = False
+        st.rerun()
+
+    # --- 10. UITGEBREIDE AGENDA ---
+    if menu == "📅 Agenda":
+        # Hier komt de uitgebreide agenda code die we eerder hebben besproken
+        st.header("📅 Afsprakenoverzicht")
+        # ... (rest van de agenda code)
+
+    # --- DOSSIERBEHEER ---
+    elif menu == "📋 Dossierbeheer":
+        # Hier komt je bestaande dossierbeheer code
+        st.header("📋 Dossierbeheer")
+        # ... (rest van de dossier code)
 
 # --- 5. NAVIGATIE ---
 menu_options = ["📝 Nieuwe Registratie"]
