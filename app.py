@@ -251,49 +251,59 @@ elif menu == "📊 Rapportages":
     else:
         st.info("Er zijn nog geen registraties gevonden om te rapporteren.")
 
-# --- 10. UITGEBREIDE AGENDA ---
+# --- 10. UITGEBREIDE INTERACTIEVE AGENDA ---
 elif menu == "📅 Agenda":
-    st.header("📅 Afsprakenoverzicht")
+    st.header("📅 Interactief Afsprakenoverzicht")
     
-    # Haal gegevens op
-    res = supabase.table("aanvragen").select("voornaam, achternaam, afspraak_datum, afspraak_tijd, telefoon, status, bericht").execute()
+    # Gegevens ophalen
+    res = supabase.table("aanvragen").select("*").order('afspraak_datum').execute()
     
     if res.data:
-        df_agenda = pd.DataFrame(res.data)
-        df_agenda['datum_dt'] = pd.to_datetime(df_agenda['afspraak_datum'])
+        df_ag = pd.DataFrame(res.data)
         
-        # Filter op datum
+        # 1. Korte statistieken bovenaan
         vandaag = datetime.date.today()
-        view = st.radio("Weergave", ["Toekomstige Afspraken", "Alle Afspraken"], horizontal=True)
+        afspraken_vandaag = df_ag[df_ag['afspraak_datum'] == str(vandaag)]
         
-        if view == "Toekomstige Afspraken":
-            df_filtered = df_agenda[df_agenda['datum_dt'].dt.date >= vandaag].sort_values(['afspraak_datum', 'afspraak_tijd'])
+        col_stat1, col_stat2 = st.columns(2)
+        col_stat1.metric("Afspraken Vandaag", len(afspraken_vandaag))
+        col_stat2.metric("Totaal Ingepland", len(df_ag))
+
+        st.divider()
+
+        # 2. Dagelijkse Details Picker
+        st.subheader("🔍 Planning per Dag")
+        gekozen_datum = st.date_input("Selecteer een datum om de planning te zien", vandaag)
+        dag_selectie = df_ag[df_ag['afspraak_datum'] == str(gekozen_datum)]
+        
+        if not dag_selectie.empty:
+            for _, row in dag_selectie.iterrows():
+                with st.expander(f"⏰ {row['afspraak_tijd']} - {row['voornaam']} {row['achternaam']} ({row['status']})"):
+                    st.write(f"**Telefoon:** {row.get('telefoon', 'Onbekend')}")
+                    st.write(f"**E-mail:** {row['email']}")
+                    st.write(f"**Klacht:** {row['bericht']}")
+                    if st.button(f"Bekijk Dossier #{row['id']}", key=f"btn_{row['id']}"):
+                        st.info("Ga naar Dossierbeheer en selecteer dit ID voor bewerking.")
         else:
-            df_filtered = df_agenda.sort_values(['afspraak_datum', 'afspraak_tijd'], ascending=False)
+            st.info(f"Geen afspraken gepland voor {gekozen_datum}.")
 
-        # Dashboard kaarten voor vandaag
-        afspraken_vandaag = df_agenda[df_agenda['datum_dt'].dt.date == vandaag]
-        st.metric("Afspraken voor vandaag", len(afspraken_vandaag))
+        st.divider()
 
-        # Uitgebreide tabel met alle details
-        st.subheader("Overzicht Details")
-        
-        # Styling van de tabel verbeteren voor leesbaarheid
+        # 3. Het Volledige Overzicht (Tabelweergave)
+        st.subheader("📋 Volledige Agenda Lijst")
         st.dataframe(
-            df_filtered[['afspraak_datum', 'afspraak_tijd', 'voornaam', 'achternaam', 'telefoon', 'status', 'bericht']],
+            df_ag[['afspraak_datum', 'afspraak_tijd', 'voornaam', 'achternaam', 'telefoon', 'status']],
             column_config={
                 "afspraak_datum": "Datum",
-                "afspraak_tijd": "Tijd",
-                "telefoon": "Telefoonnummer",
-                "status": st.column_config.SelectboxColumn("Status", options=["In behandeling", "Bevestigd", "Afgehandeld"]),
-                "bericht": "Reden afspraak"
+                "afspraak_tijd": "Tijdstip",
+                "status": st.column_config.SelectboxColumn("Status", options=["In behandeling", "Bevestigd", "Afgehandeld"])
             },
             use_container_width=True,
             hide_index=True
         )
-        
-        # Export optie specifiek voor de agenda
-        csv_agenda = df_filtered.to_csv(index=False).encode('utf-8')
-        st.download_button("📥 Agenda exporteren (CSV)", csv_agenda, "dag_agenda.csv", "text/csv")
+
+        # Export functie
+        csv_ag = df_ag.to_csv(index=False).encode('utf-8')
+        st.download_button("📥 Agenda Exporteren (CSV)", csv_ag, "agenda_export.csv", "text/csv")
     else:
-        st.info("Er staan momenteel geen afspraken gepland.")
+        st.info("Er zijn momenteel geen afspraken geregistreerd.")
