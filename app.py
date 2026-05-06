@@ -83,31 +83,61 @@ else:
                 st.session_state.update({'logged_in': True, 'role': str(user['rol']).lower(), 'user': u_sel})
                 st.rerun()
 
-# --- 6. REGISTRATIE ---
-if menu == "📝 Nieuwe Registratie":
-    st.image("https://raw.githubusercontent.com/bhikhienadeem-art/dgw-app/main/orgineel%20logo%20Centrum.png", width=120)
-    st.title("Registratie Grondzaken")
-    vnaam = st.text_input("Voornaam *")
-    anaam = st.text_input("Achternaam *")
-    email = st.text_input("E-mailadres *")
-    id_nr = st.text_input("ID-nummer *")
-    bericht = st.text_area("Omschrijving klacht *")
+# --- 6. NIEUWE REGISTRATIE (UITGEBREID MET ADRES, LAD & UPLOADS) ---
+elif menu == "📝 Nieuwe Registratie":
+    st.header("Registratie Grondzaken")
     
-    st.subheader("📅 Afspraak (Ma & Wo)")
-    datum = st.date_input("Datum", min_value=datetime.date.today())
-    if datum.weekday() in [0, 2]:
-        tijden = [f"{h:02d}:{m:02d}" for h in range(8, 15) for m in (0, 30)]
-        cols = st.columns(4)
-        for idx, t in enumerate(tijden):
-            if cols[idx % 4].button(t, key=f"t_{t}", type="primary" if st.session_state.selected_time == t else "secondary"):
-                st.session_state.selected_time = t; st.rerun()
-    
-    if st.button("✅ VERZENDEN"):
-        if all([vnaam, email, id_nr, bericht]) and st.session_state.selected_time:
-            data = {"voornaam": vnaam, "achternaam": anaam, "email": email, "id_nummer": id_nr, "afspraak_datum": str(datum), "afspraak_tijd": st.session_state.selected_time, "status": "In behandeling", "bericht": bericht}
-            supabase.table("aanvragen").insert(data).execute()
-            st.success("Registratie succesvol!"); st.session_state.selected_time = None
-        else: st.error("Vul alle velden in.")
+    with st.form("aanvraag_form", clear_on_submit=True):
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            v_naam = st.text_input("Voornaam *")
+            a_naam = st.text_input("Achternaam *")
+            email = st.text_input("E-mailadres *")
+            tel = st.text_input("Telefoonnummer *")
+        
+        with col2:
+            id_nr = st.text_input("ID-nummer *")
+            # NIEUW: Woonadres en LAD-nummer
+            woonadres = st.text_input("Woonadres *")
+            lad_nr = st.text_input("LAD-nummer (indien van toepassing)")
+            
+            # Afspraak opties (maandag en woensdag)
+            d_opties = []
+            for i in range(30):
+                d = datetime.date.today() + datetime.timedelta(days=i)
+                if d.weekday() in [0, 2]: # 0=Ma, 2=Wo
+                    d_opties.append(d.strftime("%Y-%m-%d"))
+            afspraak_d = st.selectbox("Kies een dag voor uw afspraak (Ma/Wo)", d_opties)
+            afspraak_t = st.selectbox("Tijdstip", ["08:00", "09:00", "10:00", "11:00", "12:00"])
+
+        bericht = st.text_area("Omschrijving klacht/verzoek *")
+        
+        # NIEUW: Documenten uploaden
+        st.write("---")
+        st.subheader("📁 Documenten Uploaden")
+        st.info("Upload hier kopieën van uw ID-kaart, grondbescheiden of overige bewijsstukken.")
+        geüploade_bestanden = st.file_uploader("Kies bestanden (PDF, JPG, PNG)", accept_multiple_files=True)
+        
+        submitted = st.form_submit_button("Verzenden")
+        
+        if submitted:
+            if v_naam and a_naam and email and id_nr and woonadres and bericht:
+                data = {
+                    "voornaam": v_naam, "achternaam": a_naam, "email": email, 
+                    "telefoon": tel, "id_nummer": id_nr, "woonadres": woonadres,
+                    "lad_nummer": lad_nr, "bericht": bericht, 
+                    "afspraak_datum": afspraak_d, "afspraak_tijd": afspraak_t,
+                    "status": "In behandeling"
+                }
+                supabase.table("aanvragen").insert(data).execute()
+                
+                # Feedback voor de cliënt
+                st.success(f"Bedankt {v_naam}! Uw aanvraag is geregistreerd. Uw afspraak staat gepland op {afspraak_d} om {afspraak_t}.")
+                if geüploade_bestanden:
+                    st.info(f"{len(geüploade_bestanden)} bestand(en) ontvangen.")
+            else:
+                st.error("Vul a.v.b. alle verplichte velden (*) in.")
 
 # --- 7. DOSSIERBEHEER (VOLLEDIGE CLIËNTGEGEVENS & BERICHTEN) ---
 elif menu == "📋 Dossierbeheer":
