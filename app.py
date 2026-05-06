@@ -16,23 +16,34 @@ supabase = create_client(st.secrets["SUPABASE_URL"], st.secrets["SUPABASE_KEY"])
 EMAIL_USER = "wanicacentrum.gz@gmail.com"
 EMAIL_PASS = "kmebjorjujxwqbvo"
 
-# --- 2. STYLING (HERSTEL LEESBAARHEID & HUISSTIJL) ---
+# --- 2. STYLING (LEESBAARHEID TITELS & INPUT) ---
 st.markdown("""
     <style>
     .stApp { background-color: white; }
-    h1, h2, h3 { color: #2e7d32; font-family: 'Segoe UI', sans-serif; }
     
-    /* Witte achtergrond en zwarte tekst voor alle inputvelden */
+    /* TITELS LEESBAAR MAKEN VOOR CLIËNTEN */
+    h1, h2, h3, .stTitle { 
+        color: #1b5e20 !important; /* Donkergroen voor maximaal contrast */
+        font-family: 'Segoe UI', sans-serif; 
+        font-weight: bold;
+    }
+    
+    /* INPUT VELDEN LEESBAAR MAKEN */
     .stTextInput>div>div>input, .stTextArea>div>div>textarea, .stSelectbox>div>div>div {
         background-color: white !important;
         color: black !important;
-        border: 1px solid #2e7d32 !important;
+        border: 2px solid #2e7d32 !important;
         border-radius: 8px !important;
     }
     
-    label { color: #2e7d32 !important; font-weight: bold !important; }
+    /* LABELS BOVEN VELDEN */
+    label { 
+        color: #1b5e20 !important; 
+        font-weight: bold !important; 
+        font-size: 1.1rem !important;
+    }
 
-    /* Grote groene knoppen voor mobiel gebruik */
+    /* GROTE GROENE KNOPPEN */
     div.stButton > button {
         width: 100%;
         border-radius: 10px;
@@ -43,12 +54,6 @@ st.markdown("""
         border: none;
     }
     
-    /* Specifieke styling voor de verwijderknop */
-    div.stButton > button:first-child[data-testid="stBaseButton-secondary"] {
-        background-color: #d32f2f;
-        border-color: #d32f2f;
-    }
-
     .stSidebar { background-color: #f1f8e9; }
     </style>
 """, unsafe_allow_html=True)
