@@ -164,7 +164,7 @@ if menu == "📝 Nieuwe Registratie":
     
     with st.container():
         st.subheader("📞 Direct Contact met een medewerker")
-        st.write("Heeft u vragen over uw aanvraag of ondervindt u problemen? Neem contact met ons op:")
+        st.write("Heeft u vragen over uw registratie of ondervindt u problemen? Neem contact met ons op:")
         
         icon_col, info_col = st.columns([0.1, 0.9])
         with info_col:
