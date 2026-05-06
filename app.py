@@ -137,7 +137,7 @@ if menu == "📝 Nieuwe Registratie":
     docs = st.file_uploader("Documenten uploaden", accept_multiple_files=True)
     
     st.divider()
-    st.subheader("📅 Afspraak inplannen (Ma & Wo)")
+    st.subheader("📅 Indien noodzakelijk kan een afspraak worden ingepland. Afspraken zijn uitsluitend mogelijk op maandag en woensdag tussen 08:00 en 12:00 uur.")
     datum = st.date_input("Kies datum", min_value=datetime.date.today())
     
     if datum.weekday() in [0, 2]:
