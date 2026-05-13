@@ -16,47 +16,32 @@ supabase = create_client(st.secrets["SUPABASE_URL"], st.secrets["SUPABASE_KEY"])
 EMAIL_USER = "wanicacentrum.gz@gmail.com"
 EMAIL_PASS = "kmebjorjujxwqbvo"
 
-# --- 2. STYLING (ALLEEN KLEUREN AANGEPAST VOOR LEESBAARHEID) ---
+# --- 2. STYLING ---
 st.markdown("""
     <style>
-    /* Achtergrond van de hele app */
     .stApp { background-color: white; }
-    
-    /* Titels */
     h1, h2, h3 { color: #2e7d32 !important; font-weight: bold; }
-    
-    /* Invoervelden: Witte achtergrond met ZWARTE tekst voor optimale leesbaarheid */
     input, textarea, [data-baseweb="select"] > div {
         background-color: white !important;
         color: black !important;
         border: 1px solid #2e7d32 !important;
     }
-    
-    /* Labels boven de velden: Donkergroen */
     label p {
         color: #1b5e20 !important;
         font-weight: bold !important;
     }
-
-    /* Knoppen: Groen met witte tekst */
     .stButton>button { 
         background-color: #2e7d32 !important; 
         color: white !important; 
         border-radius: 5px; 
         font-weight: bold;
     }
-
-    /* Sidebar: Lichtgroen */
     [data-testid="stSidebar"] { background-color: #f1f8e9 !important; }
-    
-    /* Verwijderknop: Rood */
     button[data-testid="stBaseButton-secondary"] {
         background-color: #d32f2f !important;
         color: white !important;
         border: none !important;
     }
-    
-    /* Tabel tekst kleur */
     .stDataFrame { color: black !important; }
     </style>
 """, unsafe_allow_html=True)
@@ -109,12 +94,14 @@ if not st.session_state.logged_in:
                 st.session_state.update({'logged_in': True, 'role': str(user['rol']).lower(), 'user': u_sel})
                 st.rerun()
 else:
-    st.sidebar.write(f"Ingelogd: **{st.session_state.user}**")
+    st.sidebar.write(f"Ingelogd: **{st.session_state.user}** ({st.session_state.role})")
     if st.sidebar.button("🚪 Afmelden"):
         st.session_state.update({'logged_in': False, 'role': None, 'user': None})
         st.rerun()
 
 # --- 6. PAGINA LOGICA ---
+
+# A. NIEUWE REGISTRATIE
 if menu == "📝 Nieuwe Registratie":
     col_l, col_r = st.columns([1, 4])
     with col_l:
@@ -138,11 +125,11 @@ if menu == "📝 Nieuwe Registratie":
     docs = st.file_uploader("Documenten uploaden", accept_multiple_files=True)
     
     st.divider()
-    st.subheader("📅 Indien noodzakelijk kan een afspraak worden ingepland. Afspraken zijn uitsluitend mogelijk op maandag en woensdag tussen 08:00 en 12:00 uur.")
+    st.subheader("📅 Afspraak inplannen (Maandag & Woensdag)")
     datum = st.date_input("Kies datum", min_value=datetime.date.today())
     
     if datum.weekday() in [0, 2]:
-        tijden = [f"{h:02d}:{m:02d}" for h in range(8, 15) for m in (0, 15, 30, 45) if not (h == 14 and m > 30)]
+        tijden = [f"{h:02d}:{m:02d}" for h in range(8, 13) for m in (0, 15, 30, 45) if not (h == 12 and m > 0)]
         cols = st.columns(6)
         for idx, t in enumerate(tijden):
             with cols[idx % 6]:
@@ -156,26 +143,21 @@ if menu == "📝 Nieuwe Registratie":
         if all([vnaam, anaam, adres, email, id_nr, bericht]) and st.session_state.selected_time:
             data = {"voornaam": vnaam, "achternaam": anaam, "woonadres": adres, "email": email, "id_nummer": id_nr, "telefoon": tel, "lad_nummer": lad, "afspraak_datum": str(datum), "afspraak_tijd": st.session_state.selected_time, "status": "In behandeling", "bericht": bericht}
             supabase.table("aanvragen").insert(data).execute()
-            st.success("Registratie succesvol!")
+            st.success("Registratie succesvol ingediend!")
             st.session_state.selected_time = None
-        else: st.error("Vul alle velden in en kies een tijdstip.")
-            # --- CONTACT SECTIE VOOR CLIENTEN ---
-    st.write("") # Extra witruimte
-    st.divider()
-    
-    with st.container():
-        st.subheader("📞 Direct Contact met een medewerker")
-        st.write("Heeft u vragen over uw registratie of ondervindt u problemen? Neem contact met ons op:")
-        
-        icon_col, info_col = st.columns([0.1, 0.9])
-        with info_col:
-            st.markdown(f"""
-                <div style="background-color: #f1f8e9; padding: 15px; border-radius: 10px; border-left: 5px solid #2e7d32;">
-                    <p style="margin: 0; color: black;"><b>📧 E-mail:</b> <a href="mailto:wanicacentrum.gz@gmail.com" style="color: #2e7d32;">wanicacentrum.gz@gmail.com</a></p>
-                    <p style="margin: 0; color: black;"><b>📞 Telefoon:</b> +597-366660 / +597-366929</p>
-                </div>
-            """, unsafe_allow_html=True)
+        else: st.error("Vul alle verplichte velden in en kies een tijdstip.")
 
+    st.write("")
+    st.divider()
+    st.subheader("📞 Direct Contact")
+    st.markdown("""
+        <div style="background-color: #f1f8e9; padding: 15px; border-radius: 10px; border-left: 5px solid #2e7d32;">
+            <p style="margin: 0; color: black;"><b>📧 E-mail:</b> wanicacentrum.gz@gmail.com</p>
+            <p style="margin: 0; color: black;"><b>📞 Telefoon:</b> +597-366660 / +597-366929</p>
+        </div>
+    """, unsafe_allow_html=True)
+
+# B. DOSSIERBEHEER
 elif menu == "📋 Dossierbeheer" and st.session_state.logged_in:
     st.header("📋 Dossierbeheer")
     res = supabase.table("aanvragen").select("*").order('id', desc=True).execute()
@@ -188,9 +170,9 @@ elif menu == "📋 Dossierbeheer" and st.session_state.logged_in:
         st.divider()
         ce1, ce2 = st.columns(2)
         with ce1:
-            n_status = st.selectbox("Status", ["In behandeling", "Wacht op documenten", "Bevestigd", "Afgehandeld"], index=["In behandeling", "Wacht op documenten", "Bevestigd", "Afgehandeld"].index(d['status']) if d['status'] in ["In behandeling", "Wacht op documenten", "Bevestigd", "Afgehandeld"] else 0)
-            n_datum = st.date_input("Datum", value=datetime.datetime.strptime(d['afspraak_datum'], '%Y-%m-%d').date())
-            n_tijd = st.text_input("Tijd", value=d['afspraak_tijd'])
+            n_status = st.selectbox("Status", ["In behandeling", "Wacht op documenten", "Bevestigd", "Afgehandeld"], index=0)
+            n_datum = st.date_input("Nieuwe Datum", value=datetime.datetime.strptime(d['afspraak_datum'], '%Y-%m-%d').date())
+            n_tijd = st.text_input("Nieuwe Tijd", value=d['afspraak_tijd'])
         with ce2:
             toelichting = st.text_area("Interne Notitie", value=d.get('medewerker_toelichting', ""))
             mail_tekst = st.text_area("Bericht naar Cliënt")
@@ -200,106 +182,77 @@ elif menu == "📋 Dossierbeheer" and st.session_state.logged_in:
             if st.button("💾 Bijwerken & Mailen", use_container_width=True):
                 supabase.table("aanvragen").update({"status": n_status, "afspraak_datum": str(n_datum), "afspraak_tijd": n_tijd, "medewerker_toelichting": toelichting}).eq("id", sel_id).execute()
                 if mail_tekst:
-                    mail_body = f"Uw dossier is bijgewerkt naar: {n_status}.\\nAfspraak: {n_datum} om {n_tijd}.\\n\\n{mail_tekst}"
+                    mail_body = f"Update Dossier: {n_status}.\\nAfspraak: {n_datum} om {n_tijd}.\\n\\n{mail_tekst}"
                     stuur_mail(d['email'], "Update Dossier", mail_body)
-                st.success("Bijgewerkt!")
+                st.success("Dossier bijgewerkt!")
                 st.rerun()
         with b2:
             if st.button(f"🗑️ Verwijder Dossier #{sel_id}", type="secondary", use_container_width=True):
                 supabase.table("aanvragen").delete().eq("id", sel_id).execute()
                 st.rerun()
 
+# C. RAPPORTAGES
 elif menu == "📊 Rapportages" and st.session_state.logged_in:
     st.header("📊 Management Rapportages")
-    
-    # Data ophalen uit de database
     res = supabase.table("aanvragen").select("*").execute()
-    
     if res.data:
         df = pd.DataFrame(res.data)
-        
-        # Grafieken naast elkaar plaatsen
-        col_grafiek1, col_grafiek2 = st.columns(2)
-        
-        with col_grafiek1:
+        c1, c2 = st.columns(2)
+        with c1:
             st.subheader("🎯 Status Verdeling")
-            # Cirkeldiagram met jouw groene huisstijl
-            status_counts = df['status'].value_counts().reset_index()
-            fig_pie = px.pie(status_counts, values='count', names='status', 
-                             color_discrete_sequence=['#2e7d32', '#4caf50', '#81c784', '#a5d6a7'])
+            fig_pie = px.pie(df, names='status', color_discrete_sequence=['#2e7d32', '#4caf50', '#81c784', '#a5d6a7'])
             st.plotly_chart(fig_pie, use_container_width=True)
-            
-        with col_grafiek2:
+        with c2:
             st.subheader("📈 Aanvragen Trend")
-            # Lijngrafiek voor het aantal aanvragen over tijd
             df['created_at'] = pd.to_datetime(df['created_at']).dt.date
-            trend_df = df.groupby('created_at').size().reset_index(name='aantal')
-            fig_line = px.line(trend_df, x='created_at', y='aantal', 
-                               markers=True, title="Aanvragen per dag")
-            fig_line.update_traces(line_color='#2e7d32') # Donkergroene lijn
+            trend = df.groupby('created_at').size().reset_index(name='aantal')
+            fig_line = px.line(trend, x='created_at', y='aantal', markers=True)
+            fig_line.update_traces(line_color='#2e7d32')
             st.plotly_chart(fig_line, use_container_width=True)
-
         st.divider()
-        st.subheader("📋 Alle Gegevens")
         st.dataframe(df, use_container_width=True, hide_index=True)
-    else:
-        st.info("Er is nog geen data om te tonen.")
 
+# D. AGENDA
 elif menu == "📅 Agenda" and st.session_state.logged_in:
     st.header("📅 Afspraken Agenda")
-    
-    # Data ophalen
     res = supabase.table("aanvragen").select("voornaam, achternaam, afspraak_datum, afspraak_tijd, status, telefoon").execute()
-    
     if res.data:
         df = pd.DataFrame(res.data)
-        df['afspraak_datum'] = pd.to_datetime(df['afspraak_datum']).dt.date
-        df = df.sort_values(['afspraak_datum', 'afspraak_tijd'])
-
-        # --- FILTERS ---
         vandaag = datetime.date.today()
-        st.subheader(f"Overzicht voor {vandaag.strftime('%d %B %Y')}")
-        
         tab1, tab2, tab3 = st.tabs(["📅 Vandaag", "⏭️ Komende Week", "📁 Alles"])
-
-        def style_status(status):
-            """Geeft een kleur aan de status voor een professionele look"""
-            if status == "Bevestigd": return "🟢"
-            if status == "Wacht op documenten": return "🟡"
-            if status == "In behandeling": return "🔵"
-            return "⚪"
-
         with tab1:
-            df_vandaag = df[df['afspraak_datum'] == vandaag]
-            if not df_vandaag.empty:
-                for _, row in df_vandaag.iterrows():
-                    with st.expander(f"⏰ {row['afspraak_tijd']} - {row['voornaam']} {row['achternaam']}"):
-                        st.write(f"**Status:** {style_status(row['status'])} {row['status']}")
-                        st.write(f"**Telefoon:** {row['telefoon']}")
-            else:
-                st.info("Geen afspraken voor vandaag.")
-
+            df_v = df[pd.to_datetime(df['afspraak_datum']).dt.date == vandaag]
+            st.dataframe(df_v, use_container_width=True)
         with tab2:
-            volgende_week = vandaag + datetime.timedelta(days=7)
-            df_week = df[(df['afspraak_datum'] > vandaag) & (df['afspraak_datum'] <= volgende_week)]
-            st.dataframe(df_week, use_container_width=True, hide_index=True)
-
+            df_w = df[pd.to_datetime(df['afspraak_datum']).dt.date > vandaag]
+            st.dataframe(df_w, use_container_width=True)
         with tab3:
-            # Een nette gestylede tabel voor het totale overzicht
-            st.dataframe(
-                df,
-                column_config={
-                    "afspraak_datum": "Datum",
-                    "afspraak_tijd": "Tijdstip",
-                    "voornaam": "Voornaam",
-                    "achternaam": "Achternaam",
-                    "status": st.column_config.SelectboxColumn(
-                        "Status",
-                        options=["Bevestigd", "In behandeling", "Wacht op documenten"],
-                    )
-                },
-                use_container_width=True,
-                hide_index=True
-            )
+            st.dataframe(df.sort_values('afspraak_datum'), use_container_width=True)
+
+# E. SYSTEEMBEHEER (GEBRUIKERSBEHEER)
+elif menu == "⚙️ Systeembeheer" and st.session_state.logged_in:
+    st.header("⚙️ Systeembeheer")
+    if st.session_state.role == 'admin':
+        t1, t2 = st.tabs(["👥 Gebruikers Overzicht", "➕ Gebruiker Toevoegen"])
+        with t1:
+            res_u = supabase.table("medewerkers").select("*").execute()
+            if res_u.data:
+                df_u = pd.DataFrame(res_u.data)
+                st.dataframe(df_u[['gebruikersnaam', 'rol']], use_container_width=True)
+                u_del = st.selectbox("Verwijder medewerker", df_u['gebruikersnaam'].tolist())
+                if st.button("🗑️ Definitief Verwijderen", type="secondary"):
+                    if u_del != st.session_state.user:
+                        supabase.table("medewerkers").delete().eq("gebruikersnaam", u_del).execute()
+                        st.success("Gebruiker verwijderd.")
+                        st.rerun()
+                    else: st.error("Je kunt jezelf niet verwijderen.")
+        with t2:
+            new_u = st.text_input("Nieuwe Gebruikersnaam")
+            new_p = st.text_input("Wachtwoord", type="password")
+            new_r = st.selectbox("Rol", ["user", "admin"])
+            if st.button("✅ Gebruiker Opslaan"):
+                supabase.table("medewerkers").insert({"gebruikersnaam": new_u, "wachtwoord": new_p, "rol": new_r}).execute()
+                st.success("Gebruiker aangemaakt!")
+                st.rerun()
     else:
-        st.info("Er zijn momenteel geen afspraken ingepland.")
+        st.warning("⚠️ Alleen beheerders hebben toegang tot dit menu.")
