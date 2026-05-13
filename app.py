@@ -107,7 +107,7 @@ if menu == "📝 Nieuwe Registratie":
     with col_l:
         st.image("https://raw.githubusercontent.com/bhikhienadeem-art/dgw-app/main/orgineel%20logo%20Centrum.png", width=120)
     with col_r:
-        st.title("Registratie Grondzaken Wanica Centrum")
+       st.title("Meldpunt Grondproblemen Wanica Centrum")
     
     st.divider()
     c1, c2 = st.columns(2)
