@@ -246,11 +246,60 @@ elif menu == "📊 Rapportages" and st.session_state.logged_in:
         st.info("Er is nog geen data om te tonen.")
 
 elif menu == "📅 Agenda" and st.session_state.logged_in:
-    res = supabase.table("aanvragen").select("voornaam, achternaam, afspraak_datum, afspraak_tijd, status").execute()
-    if res.data: st.table(pd.DataFrame(res.data).sort_values('afspraak_datum'))
+    st.header("📅 Afspraken Agenda")
+    
+    # Data ophalen
+    res = supabase.table("aanvragen").select("voornaam, achternaam, afspraak_datum, afspraak_tijd, status, telefoon").execute()
+    
+    if res.data:
+        df = pd.DataFrame(res.data)
+        df['afspraak_datum'] = pd.to_datetime(df['afspraak_datum']).dt.date
+        df = df.sort_values(['afspraak_datum', 'afspraak_tijd'])
 
-elif menu == "⚙️ Systeembeheer" and st.session_state.logged_in:
-    if st.session_state.role == 'admin':
-        st.header("⚙️ Systeembeheer")
-        # Medewerkersbeheer...
-    else: st.error("Geen admin rechten.")
+        # --- FILTERS ---
+        vandaag = datetime.date.today()
+        st.subheader(f"Overzicht voor {vandaag.strftime('%d %B %Y')}")
+        
+        tab1, tab2, tab3 = st.tabs(["📅 Vandaag", "⏭️ Komende Week", "📁 Alles"])
+
+        def style_status(status):
+            """Geeft een kleur aan de status voor een professionele look"""
+            if status == "Bevestigd": return "🟢"
+            if status == "Wacht op documenten": return "🟡"
+            if status == "In behandeling": return "🔵"
+            return "⚪"
+
+        with tab1:
+            df_vandaag = df[df['afspraak_datum'] == vandaag]
+            if not df_vandaag.empty:
+                for _, row in df_vandaag.iterrows():
+                    with st.expander(f"⏰ {row['afspraak_tijd']} - {row['voornaam']} {row['achternaam']}"):
+                        st.write(f"**Status:** {style_status(row['status'])} {row['status']}")
+                        st.write(f"**Telefoon:** {row['telefoon']}")
+            else:
+                st.info("Geen afspraken voor vandaag.")
+
+        with tab2:
+            volgende_week = vandaag + datetime.timedelta(days=7)
+            df_week = df[(df['afspraak_datum'] > vandaag) & (df['afspraak_datum'] <= volgende_week)]
+            st.dataframe(df_week, use_container_width=True, hide_index=True)
+
+        with tab3:
+            # Een nette gestylede tabel voor het totale overzicht
+            st.dataframe(
+                df,
+                column_config={
+                    "afspraak_datum": "Datum",
+                    "afspraak_tijd": "Tijdstip",
+                    "voornaam": "Voornaam",
+                    "achternaam": "Achternaam",
+                    "status": st.column_config.SelectboxColumn(
+                        "Status",
+                        options=["Bevestigd", "In behandeling", "Wacht op documenten"],
+                    )
+                },
+                use_container_width=True,
+                hide_index=True
+            )
+    else:
+        st.info("Er zijn momenteel geen afspraken ingepland.")
