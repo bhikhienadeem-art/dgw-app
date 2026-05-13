@@ -139,7 +139,7 @@ if menu == "📝 Nieuwe Registratie":
     else:
         st.warning("Bezoekafspraken zijn enkel op maandag en woensdag.")
 
-    if st.button("✅ Registratie Indienen", type="primary", use_container_width=True):
+    if st.button("✅ Indienen", type="primary", use_container_width=True):
         if all([vnaam, anaam, adres, email, id_nr, bericht]) and st.session_state.selected_time:
             data = {"voornaam": vnaam, "achternaam": anaam, "woonadres": adres, "email": email, "id_nummer": id_nr, "telefoon": tel, "lad_nummer": lad, "afspraak_datum": str(datum), "afspraak_tijd": st.session_state.selected_time, "status": "In behandeling", "bericht": bericht}
             supabase.table("aanvragen").insert(data).execute()
