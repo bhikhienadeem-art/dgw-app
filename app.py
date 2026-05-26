@@ -214,19 +214,71 @@ elif menu == "📋 Dossierbeheer" and st.session_state.logged_in:
     res = supabase.table("aanvragen").select("*").order('id', desc=True).execute()
     if res.data:
         df = pd.DataFrame(res.data)
-        st.dataframe(df[['id', 'voornaam', 'achternaam', 'status', 'afspraak_datum']], hide_index=True, use_container_width=True)
+        
+        # Toon een overzichtelijke tabel van de belangrijkste kolommen
+        st.dataframe(df[['id', 'voornaam', 'achternaam', 'id_nummer', 'telefoon', 'lad_nummer', 'status', 'afspraak_datum']], hide_index=True, use_container_width=True)
+        
         sel_id = st.selectbox("Selecteer Dossier", df['id'].tolist())
         d = next(item for item in res.data if item['id'] == sel_id)
         
+        # --- NIEUW: UITGEBREID OVERZICHT VAN ALLE CLIËNTGEGEVENS ---
+        st.write("")
+        st.subheader(f"🔍 Volledige Details - Dossier #{sel_id}")
+        
+        # We maken een nette layout met 3 kolommen voor de cliënt- en afspraakkaarten
+        det_c1, det_c2, det_c3 = st.columns(3)
+        
+        with det_c1:
+            st.markdown(f"""
+            <div style="background-color: #f1f8e9; padding: 15px; border-radius: 5px; border-left: 4px solid #2e7d32;">
+                <h4 style="margin-top:0; color: #1b5e20;">👤 Cliëntgegevens</h4>
+                <b>Voornaam:</b> {d.get('voornaam', '')}<br>
+                <b>Achternaam:</b> {d.get('achternaam', '')}<br>
+                <b>ID-nummer:</b> {d.get('id_nummer', '')}<br>
+                <b>Woonadres:</b> {d.get('woonadres', '')}
+            </div>
+            """, unsafe_allow_html=True)
+            
+        with det_c2:
+            st.markdown(f"""
+            <div style="background-color: #f1f8e9; padding: 15px; border-radius: 5px; border-left: 4px solid #2e7d32;">
+                <h4 style="margin-top:0; color: #1b5e20;">📞 Contact & Referentie</h4>
+                <b>Telefoonnummer:</b> {d.get('telefoon', '')}<br>
+                <b>E-mailadres:</b> {d.get('email', '')}<br>
+                <b>LAD-nummer:</b> {d.get('lad_nummer', 'N.v.t.')}
+            </div>
+            """, unsafe_allow_html=True)
+            
+        with det_c3:
+            st.markdown(f"""
+            <div style="background-color: #e8f5e9; padding: 15px; border-radius: 5px; border-left: 4px solid #1b5e20;">
+                <h4 style="margin-top:0; color: #1b5e20;">📅 Afspraakstatus</h4>
+                <b>Datum:</b> {d.get('afspraak_datum', '')}<br>
+                <b>Tijdstip:</b> {d.get('afspraak_tijd', '')} uur<br>
+                <b>Huidige Status:</b> <u>{d.get('status', '')}</u>
+            </div>
+            """, unsafe_allow_html=True)
+            
+        # Volledige omschrijving van de klacht over de hele breedte
+        st.write("")
+        st.markdown(f"""
+        <div style="background-color: #fafafa; padding: 15px; border-radius: 5px; border: 1px solid #2e7d32;">
+            <h4 style="margin-top:0; color: #1b5e20;">📝 Omschrijving klacht/verzoek:</h4>
+            <p style="color: black; white-space: pre-wrap;">{d.get('bericht', '')}</p>
+        </div>
+        """, unsafe_allow_html=True)
+        # -----------------------------------------------------------
+        
         st.divider()
+        st.subheader("⚙️ Dossier Bewerken & Acties")
         ce1, ce2 = st.columns(2)
         with ce1:
-            n_status = st.selectbox("Status", ["In behandeling", "Wacht op documenten", "Bevestigd", "Afgehandeld"], index=0)
+            n_status = st.selectbox("Status aanpassen", ["In behandeling", "Wacht op documenten", "Bevestigd", "Afgehandeld"], index=["In behandeling", "Wacht op documenten", "Bevestigd", "Afgehandeld"].index(d['status']) if d['status'] in ["In behandeling", "Wacht op documenten", "Bevestigd", "Afgehandeld"] else 0)
             n_datum = st.date_input("Nieuwe Datum", value=datetime.datetime.strptime(d['afspraak_datum'], '%Y-%m-%d').date())
             n_tijd = st.text_input("Nieuwe Tijd", value=d['afspraak_tijd'])
         with ce2:
-            toelichting = st.text_area("Interne Notitie", value=d.get('medewerker_toelichting', ""))
-            mail_tekst = st.text_area("Bericht naar Cliënt")
+            toelichting = st.text_area("Interne Notitie (Medewerker)", value=d.get('medewerker_toelichting', ""))
+            mail_tekst = st.text_area("Bericht naar Cliënt (Laat leeg indien geen mail gewenst)")
 
         b1, b2 = st.columns(2)
         with b1:
@@ -235,7 +287,7 @@ elif menu == "📋 Dossierbeheer" and st.session_state.logged_in:
                 if mail_tekst:
                     mail_body = f"Update Dossier: {n_status}.\\nAfspraak: {n_datum} om {n_tijd}.\\n\\n{mail_tekst}"
                     stuur_mail(d['email'], "Update Dossier", mail_body)
-                st.success("Dossier bijgewerkt!")
+                st.success("Dossier succesvol bijgewerkt!")
                 st.rerun()
         with b2:
             if st.button(f"🗑️ Verwijder Dossier #{sel_id}", type="secondary", use_container_width=True):
