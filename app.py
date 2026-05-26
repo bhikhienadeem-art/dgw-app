@@ -52,8 +52,11 @@ def stuur_mail(ontvanger, onderwerp, inhoud, bestanden=None):
     msg['From'] = f"Dienst Grondzaken Wanica Centrum <{EMAIL_USER}>"
     msg['To'] = ontvanger
     msg['Subject'] = onderwerp
-    html_inhoud = f"<html><body style='font-family: Arial;'>{inhoud.replace('\\n', '<br>')}</body></html>"
+    
+    # Zorgt ervoor dat regeleinden (\n) netjes worden omgezet naar HTML-balken (<br>)
+    html_inhoud = f"<html><body style='font-family: Arial; font-size: 14px; color: black;'>{inhoud.replace('\\n', '<br>')}</body></html>"
     msg.attach(MIMEText(html_inhoud, 'html'))
+    
     if bestanden:
         for f in bestanden:
             f.seek(0)
@@ -67,7 +70,8 @@ def stuur_mail(ontvanger, onderwerp, inhoud, bestanden=None):
         server.send_message(msg)
         server.quit()
         return True
-    except: return False
+    except: 
+        return False
 
 # --- 4. STATE ---
 if 'logged_in' not in st.session_state:
@@ -141,11 +145,58 @@ if menu == "📝 Nieuwe Registratie":
 
     if st.button("✅ Indienen", type="primary", use_container_width=True):
         if all([vnaam, anaam, adres, email, id_nr, bericht]) and st.session_state.selected_time:
-            data = {"voornaam": vnaam, "achternaam": anaam, "woonadres": adres, "email": email, "id_nummer": id_nr, "telefoon": tel, "lad_nummer": lad, "afspraak_datum": str(datum), "afspraak_tijd": st.session_state.selected_time, "status": "In behandeling", "bericht": bericht}
+            # 1. Opslaan in Supabase Database
+            data = {
+                "voornaam": vnaam, 
+                "achternaam": anaam, 
+                "woonadres": adres, 
+                "email": email, 
+                "id_nummer": id_nr, 
+                "telefoon": tel, 
+                "lad_nummer": lad, 
+                "afspraak_datum": str(datum), 
+                "afspraak_tijd": st.session_state.selected_time, 
+                "status": "In behandeling", 
+                "bericht": bericht
+            }
             supabase.table("aanvragen").insert(data).execute()
-            st.success("Registratie succesvol ingediend!")
+            
+            # 2. E-mailtekst opbouwen voor de medewerker
+            mail_onderwerp = f"🚨 Nieuwe Registratie: LAD {lad if lad else 'N.v.t.'} - {vnaam} {anaam}"
+            mail_inhoud = f"""
+            <h3>Nieuwe melding binnengekomen via het portaal:</h3>
+            <br>
+            <b>CLIËNT GEGEVENS:</b><br>
+            - <b>Naam:</b> {vnaam} {anaam}<br>
+            - <b>ID-nummer:</b> {id_nr}<br>
+            - <b>Adres:</b> {adres}<br>
+            - <b>Telefoonnummer:</b> {tel}<br>
+            - <b>E-mailadres:</b> {email}<br>
+            - <b>LAD-nummer:</b> {lad if lad else 'Niet opgegeven'}<br>
+            <br>
+            <b>OMSCHRIJVING KLACHT / VERZOEK:</b><br>
+            {bericht}<br>
+            <br>
+            <b>GEPLANDE AFSPRAAK:</b><br>
+            - <b>Datum:</b> {datum.strftime('%d-%m-%Y')}<br>
+            - <b>Tijdstip:</b> {st.session_state.selected_time} uur<br>
+            <br>
+            <i>De bijbehorende documenten zijn als bijlage toegevoegd aan deze e-mail.</i>
+            """
+            
+            # 3. E-mail verzenden met de uploadlijst (docs) als bijlage
+            with st.spinner("Notificatie verzenden naar medewerker..."):
+                mail_verzonden = stuur_mail(EMAIL_USER, mail_onderwerp, mail_inhoud, bestanden=docs)
+            
+            if mail_verzonden:
+                st.success("Registratie succesvol ingediend! De medewerker heeft de documenten en gegevens per e-mail ontvangen.")
+            else:
+                st.warning("Registratie succesvol opgeslagen in de database, maar er was een probleem met het verzenden van de e-mail.")
+                
             st.session_state.selected_time = None
-        else: st.error("Vul alle verplichte velden in en kies een tijdstip.")
+            st.rerun()
+        else: 
+            st.error("Vul alle verplichte velden in en kies een tijdstip.")
 
     st.write("")
     st.divider()
