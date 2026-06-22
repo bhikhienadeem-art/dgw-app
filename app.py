@@ -19,29 +19,46 @@ EMAIL_PASS = "kmebjorjujxwqbvo"
 # --- 2. STYLING ---
 st.markdown("""
     <style>
-    .stApp { background-color: white; }
+    /* Achtergrond van de hele pagina */
+    .stApp { background-color: #f0f7f0; }
+    
+    /* Titels */
     h1, h2, h3 { color: #2e7d32 !important; font-weight: bold; }
-    input, textarea, [data-baseweb="select"] > div {
+    
+    /* De witte achtergrond voor de invulvelden/formulieren */
+    .stTextInput > div > div > input, 
+    .stTextArea > div > div > textarea, 
+    [data-baseweb="select"] > div {
         background-color: white !important;
         color: black !important;
         border: 1px solid #2e7d32 !important;
     }
+    
+    /* Labels boven de velden */
     label p {
         color: #1b5e20 !important;
         font-weight: bold !important;
     }
+    
+    /* Knoppen */
     .stButton>button { 
         background-color: #2e7d32 !important; 
         color: white !important; 
         border-radius: 5px; 
         font-weight: bold;
     }
-    [data-testid="stSidebar"] { background-color: #f1f8e9 !important; }
+    
+    /* Sidebar */
+    [data-testid="stSidebar"] { background-color: #e8f5e9 !important; }
+    
+    /* Secundaire knoppen (zoals verwijderen) */
     button[data-testid="stBaseButton-secondary"] {
         background-color: #d32f2f !important;
         color: white !important;
         border: none !important;
     }
+    
+    /* Dataframes */
     .stDataFrame { color: black !important; }
     </style>
 """, unsafe_allow_html=True)
