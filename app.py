@@ -1,378 +1,407 @@
-import plotly.express as px
 import streamlit as st
-from supabase import create_client, Client
-import datetime
+import sqlite3
+import os
+import hashlib
 import pandas as pd
+import base64
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
-from email.mime.application import MIMEApplication
 
-# --- 1. CONFIGURATIE ---
-st.set_page_config(page_title="Registratie Dienst Grondzaken Wanica Centrum", layout="wide")
+# --- 1. CONFIGURATIE & INSTELLINGEN ---
+st.set_page_config(
+    page_title="Aanvraag Goedgedrag - Districtscommissariaat Wanica Centrum",
+    page_icon="📜",
+    layout="wide"
+)
 
-supabase = create_client(st.secrets["SUPABASE_URL"], st.secrets["SUPABASE_KEY"])
+EMAIL_USER = "ggdaanvraag@gmail.com"
+EMAIL_PASS = "fzne mpao hdqd lwcr" # Jouw Google App-Password
 
-EMAIL_USER = "wanicacentrum.gz@gmail.com"
-EMAIL_PASS = "kmebjorjujxwqbvo"
+# Initialize Database & Tables
+def init_db():
+    conn = sqlite3.connect('wanica.db')
+    cursor = conn.cursor()
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS applications (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            full_name TEXT,
+            id_number TEXT,
+            phone_number TEXT,
+            email TEXT,
+            uitreksel_file TEXT,
+            pasfoto_file TEXT,
+            id_kaart_file TEXT,
+            bankbewijs_file TEXT,
+            status TEXT DEFAULT 'In behandeling',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS staff (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT UNIQUE,
+            password TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
+    cursor.execute("INSERT OR IGNORE INTO staff (username, password) VALUES (?, ?)", ("admin", "admin@123"))
+    conn.commit()
+    conn.close()
 
-# --- 2. STYLING ---
-st.markdown("""
-    <style>
-    /* Achtergrond van de hele pagina */
-    .stApp { background-color: #f0f7f0; }
-    
-    /* Titels */
-    h1, h2, h3 { color: #2e7d32 !important; font-weight: bold; }
-    
-    /* De witte achtergrond voor de invulvelden/formulieren */
-    .stTextInput > div > div > input, 
-    .stTextArea > div > div > textarea, 
-    [data-baseweb="select"] > div {
-        background-color: white !important;
-        color: black !important;
-        border: 1px solid #2e7d32 !important;
-    }
-    
-    /* Labels boven de velden */
-    label p {
-        color: #1b5e20 !important;
-        font-weight: bold !important;
-    }
-    
-    /* Knoppen */
-    .stButton>button { 
-        background-color: #2e7d32 !important; 
-        color: white !important; 
-        border-radius: 5px; 
-        font-weight: bold;
-    }
-    
-    /* Sidebar */
-    [data-testid="stSidebar"] { background-color: #e8f5e9 !important; }
-    
-    /* Secundaire knoppen (zoals verwijderen) */
-    button[data-testid="stBaseButton-secondary"] {
-        background-color: #d32f2f !important;
-        color: white !important;
-        border: none !important;
-    }
-    
-    /* Dataframes */
-    .stDataFrame { color: black !important; }
-    </style>
-""", unsafe_allow_html=True)
+init_db()
 
-# --- 3. EMAIL FUNCTIE ---
-def stuur_mail(ontvanger, onderwerp, inhoud, bestanden=None):
+# Uploads Directory
+UPLOAD_DIR = "uploads"
+if not os.path.exists(UPLOAD_DIR):
+    os.makedirs(UPLOAD_DIR)
+
+def save_file(uploaded_file):
+    if uploaded_file is not None:
+        new_name = f"{hashlib.md5(uploaded_file.name.encode()).hexdigest()}_{uploaded_file.name}"
+        path = os.path.join(UPLOAD_DIR, new_name)
+        with open(path, "wb") as f:
+            f.write(uploaded_file.getbuffer())
+        return new_name
+    return None
+
+# --- 2. AUTOMATISCHE E-MAIL FUNCTIE (SMTP) ---
+def stuur_automatische_mail(ontvanger_email, onderwerp, inhoud_html):
     msg = MIMEMultipart()
-    msg['From'] = f"Dienst Grondzaken Wanica Centrum <{EMAIL_USER}>"
-    msg['To'] = ontvanger
+    msg['From'] = f"Districtscommissariaat Wanica Centrum <{EMAIL_USER}>"
+    msg['To'] = ontvanger_email
     msg['Subject'] = onderwerp
     
-    # Zorgt ervoor dat regeleinden (\n) netjes worden omgezet naar HTML-balken (<br>)
-    html_inhoud = f"<html><body style='font-family: Arial; font-size: 14px; color: black;'>{inhoud.replace('\\n', '<br>')}</body></html>"
-    msg.attach(MIMEText(html_inhoud, 'html'))
+    msg.attach(MIMEText(inhoud_html, 'html'))
     
-    if bestanden:
-        for f in bestanden:
-            f.seek(0)
-            part = MIMEApplication(f.read(), Name=f.name)
-            part['Content-Disposition'] = f'attachment; filename="{f.name}"'
-            msg.attach(part)
     try:
         server = smtplib.SMTP('smtp.gmail.com', 587)
         server.starttls()
-        server.login(EMAIL_USER, EMAIL_PASS)
+        server.login(EMAIL_USER, EMAIL_PASS.replace(" ", ""))
         server.send_message(msg)
         server.quit()
         return True
-    except: 
+    except Exception as e:
+        print(f"Fout bij verzenden: {e}")
         return False
 
-# --- 4. STATE ---
-if 'logged_in' not in st.session_state:
-    st.session_state.update({'logged_in': False, 'role': None, 'user': None})
-if 'selected_time' not in st.session_state:
-    st.session_state.selected_time = None
+# --- 3. CUSTOM CSS ---
+def add_custom_css():
+    bg_image_path = "achtergrond.jpg"
+    bg_css = ""
+    if os.path.exists(bg_image_path):
+        with open(bg_image_path, "rb") as f:
+            encoded_bg = base64.b64encode(f.read()).decode()
+        bg_css = f"""
+            background: linear-gradient(rgba(0, 0, 0, 0.65), rgba(0, 0, 0, 0.65)), url("data:image/jpg;base64,{encoded_bg}") no-repeat center center fixed;
+            background-size: cover;
+        """
 
-# --- 5. MENU & LOGIN ---
-menu_options = ["📝 Nieuwe Registratie"]
-if st.session_state.logged_in:
-    menu_options += ["📋 Dossierbeheer", "📊 Rapportages", "📅 Agenda", "⚙️ Systeembeheer"]
+    st.markdown(f"""
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap');
 
-menu = st.sidebar.radio("Hoofdmenu", menu_options)
+        html, body, [class*="css"], .stApp {{
+            font-family: 'Plus Jakarta Sans', sans-serif !important;
+            {bg_css}
+        }}
+        
+        [data-testid="stSidebar"] {{
+            background-color: #f8fafc !important;
+            border-right: 2px solid #cbd5e1 !important;
+        }}
+        [data-testid="stSidebar"] p, [data-testid="stSidebar"] span, [data-testid="stSidebar"] label, [data-testid="stSidebar"] div {{
+            color: #0f172a !important;
+            font-weight: 700 !important;
+        }}
 
-if not st.session_state.logged_in:
-    with st.sidebar.expander("🔐 Medewerker Login"):
-        res_m = supabase.table("medewerkers").select("*").execute()
-        u_list = [u['gebruikersnaam'] for u in res_m.data] if res_m.data else []
-        u_sel = st.selectbox("Gebruiker", ["---"] + u_list)
-        p_inp = st.text_input("Wachtwoord", type="password")
-        if st.button("Inloggen"):
-            user = next((u for u in res_m.data if u['gebruikersnaam'] == u_sel), None)
-            if user and user['wachtwoord'] == p_inp:
-                st.session_state.update({'logged_in': True, 'role': str(user['rol']).lower(), 'user': u_sel})
-                st.rerun()
-else:
-    st.sidebar.write(f"Ingelogd: **{st.session_state.user}** ({st.session_state.role})")
-    if st.sidebar.button("🚪 Afmelden"):
-        st.session_state.update({'logged_in': False, 'role': None, 'user': None})
-        st.rerun()
+        .custom-header {{
+            background: linear-gradient(135deg, #1b5e20 0%, #2e7d32 100%);
+            border-bottom: 6px solid #144517;
+            padding: 28px 35px;
+            border-radius: 16px;
+            color: #ffffff;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 25px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.45);
+            flex-wrap: wrap;
+            gap: 25px;
+        }}
+        .header-brand {{
+            display: flex;
+            align-items: center;
+            gap: 24px;
+        }}
+        .header-title h1 {{
+            margin: 0;
+            font-size: 28px;
+            color: #ffffff !important;
+            font-weight: 800;
+        }}
+        .header-contact {{
+            font-size: 16px;
+            text-align: right;
+            line-height: 1.8;
+            background: rgba(255, 255, 255, 0.18);
+            padding: 14px 22px;
+            border-radius: 12px;
+            color: #ffffff !important;
+            border: 1.5px solid rgba(255, 255, 255, 0.35);
+            font-weight: 600;
+        }}
 
-# --- 6. PAGINA LOGICA ---
+        div[data-testid="stForm"] {{
+            background-color: #ffffff !important;
+            padding: 40px !important;
+            border-radius: 16px !important;
+            box-shadow: 0 15px 40px rgba(0,0,0,0.5) !important;
+            border: 1px solid #cbd5e1 !important;
+        }}
+        
+        .section-header {{
+            background-color: #e8f5e9;
+            border-left: 6px solid #2e7d32;
+            padding: 12px 18px;
+            font-size: 16px;
+            font-weight: 800;
+            color: #1b5e20 !important;
+            border-radius: 0 8px 8px 0;
+            margin: 25px 0 18px 0;
+        }}
 
-# A. NIEUWE REGISTRATIE
-if menu == "📝 Nieuwe Registratie":
-    col_l, col_r = st.columns([1, 4])
-    with col_l:
-        st.image("https://raw.githubusercontent.com/bhikhienadeem-art/dgw-app/main/orgineel%20logo%20Centrum.png", width=120)
-    with col_r:
-       st.title("Meldpunt Grondproblemen Wanica Centrum")
-    
-    st.divider()
-    c1, c2 = st.columns(2)
-    with c1:
-        vnaam = st.text_input("Voornaam *")
-        anaam = st.text_input("Achternaam *")
-        adres = st.text_input("Woonadres *")
-        email = st.text_input("E-mailadres *")
-    with c2:
-        id_nr = st.text_input("ID-nummer *")
-        tel = st.text_input("Telefoonnummer *")
-        lad = st.text_input("LAD-nummer")
-    
-    bericht = st.text_area("Omschrijving klacht/verzoek *")
-    docs = st.file_uploader("Documenten uploaden", accept_multiple_files=True)
-    
-    st.divider()
-    st.subheader("📅 Afspraak inplannen (Maandag & Woensdag)")
-    datum = st.date_input("Kies datum", min_value=datetime.date.today())
-    
-    if datum.weekday() in [0, 2]:
-        tijden = [f"{h:02d}:{m:02d}" for h in range(8, 13) for m in (0, 15, 30, 45) if not (h == 12 and m > 0)]
-        cols = st.columns(6)
-        for idx, t in enumerate(tijden):
-            with cols[idx % 6]:
-                if st.button(t, key=f"t_{t}", type="primary" if st.session_state.selected_time == t else "secondary", use_container_width=True):
-                    st.session_state.selected_time = t
-                    st.rerun()
-    else:
-        st.warning("Bezoekafspraken zijn enkel op maandag en woensdag.")
+        div[data-testid="stForm"] label, label, div[data-testid="stWidgetLabel"] p {{
+            color: #0f172a !important;
+            font-weight: 700 !important;
+            font-size: 15px !important;
+        }}
 
-    if st.button("✅ Indienen", type="primary", use_container_width=True):
-        if all([vnaam, anaam, adres, email, id_nr, bericht]) and st.session_state.selected_time:
-            # 1. Opslaan in Supabase Database
-            data = {
-                "voornaam": vnaam, 
-                "achternaam": anaam, 
-                "woonadres": adres, 
-                "email": email, 
-                "id_nummer": id_nr, 
-                "telefoon": tel, 
-                "lad_nummer": lad, 
-                "afspraak_datum": str(datum), 
-                "afspraak_tijd": st.session_state.selected_time, 
-                "status": "In behandeling", 
-                "bericht": bericht
-            }
-            supabase.table("aanvragen").insert(data).execute()
-            
-            # 2. E-mailtekst opbouwen voor de medewerker
-            mail_onderwerp = f"🚨 Nieuwe Registratie: LAD {lad if lad else 'N.v.t.'} - {vnaam} {anaam}"
-            mail_inhoud = f"""
-            <h3>Nieuwe melding binnengekomen via het portaal:</h3>
-            <br>
-            <b>CLIËNT GEGEVENS:</b><br>
-            - <b>Naam:</b> {vnaam} {anaam}<br>
-            - <b>ID-nummer:</b> {id_nr}<br>
-            - <b>Adres:</b> {adres}<br>
-            - <b>Telefoonnummer:</b> {tel}<br>
-            - <b>E-mailadres:</b> {email}<br>
-            - <b>LAD-nummer:</b> {lad if lad else 'Niet opgegeven'}<br>
-            <br>
-            <b>OMSCHRIJVING KLACHT / VERZOEK:</b><br>
-            {bericht}<br>
-            <br>
-            <b>GEPLANDE AFSPRAAK:</b><br>
-            - <b>Datum:</b> {datum.strftime('%d-%m-%Y')}<br>
-            - <b>Tijdstip:</b> {st.session_state.selected_time} uur<br>
-            <br>
-            <i>De bijbehorende documenten zijn als bijlage toegevoegd aan deze e-mail.</i>
-            """
-            
-            # 3. E-mail verzenden met de uploadlijst (docs) als bijlage
-            with st.spinner("Notificatie verzenden naar medewerker..."):
-                mail_verzonden = stuur_mail(EMAIL_USER, mail_onderwerp, mail_inhoud, bestanden=docs)
-            
-            if mail_verzonden:
-                st.success("Registratie succesvol ingediend! De medewerker heeft de documenten en gegevens per e-mail ontvangen.")
-            else:
-                st.warning("Registratie succesvol opgeslagen in de database, maar er was een probleem met het verzenden van de e-mail.")
-                
-            st.session_state.selected_time = None
-            st.rerun()
-        else: 
-            st.error("Vul alle verplichte velden in en kies een tijdstip.")
+        .stTextInput input {{
+            background-color: #ffffff !important;
+            color: #0f172a !important;
+            border: 2px solid #64748b !important;
+            border-radius: 8px !important;
+            padding: 12px 15px !important;
+        }}
 
-    st.write("")
-    st.divider()
-    st.subheader("📞 Direct Contact")
-    st.markdown("""
-        <div style="background-color: #f1f8e9; padding: 15px; border-radius: 10px; border-left: 5px solid #2e7d32;">
-            <p style="margin: 0; color: black;"><b>📧 E-mail:</b> wanicacentrum.gz@gmail.com</p>
-            <p style="margin: 0; color: black;"><b>📞 Telefoon:</b> +597-366660 / +597-366929</p>
-        </div>
+        [data-testid="stFileUploader"] {{
+            background-color: #f8fafc !important;
+            border: 2px dashed #cbd5e1 !important;
+            border-radius: 12px !important;
+            padding: 16px !important;
+        }}
+
+        div.stButton > button, div[data-testid="stFormSubmitButton"] > button {{
+            background-color: #1b5e20 !important;
+            color: #ffffff !important;
+            font-weight: 800 !important;
+            font-size: 18px !important;
+            padding: 16px 30px !important;
+            border-radius: 10px !important;
+            border: none !important;
+            width: 100% !important;
+        }}
+    </style>
     """, unsafe_allow_html=True)
 
-# B. DOSSIERBEHEER
-elif menu == "📋 Dossierbeheer" and st.session_state.logged_in:
-    st.header("📋 Dossierbeheer")
-    res = supabase.table("aanvragen").select("*").order('id', desc=True).execute()
-    if res.data:
-        df = pd.DataFrame(res.data)
+add_custom_css()
+
+# --- 4. HEADER ---
+logo_path = "logo.png"
+logo_html = ""
+
+if os.path.exists(logo_path):
+    with open(logo_path, "rb") as f:
+        encoded_logo = base64.b64encode(f.read()).decode()
+    logo_html = f'<img src="data:image/png;base64,{encoded_logo}" style="height: 135px; width: auto; background: #ffffff; padding: 8px; border-radius: 14px;">'
+
+st.markdown(f"""
+<div class="custom-header">
+    <div class="header-brand">
+        {logo_html}
+        <div class="header-title">
+            <h1>Districtscommissariaat Wanica Centrum</h1>
+            <p style="margin: 6px 0 0 0; color: #e2e8f0;">Online Diensten Portaal</p>
+        </div>
+    </div>
+    <div class="header-contact">
+        📍 <b>Adres:</b> Tawajarieweg No. 20<br>
+        📞 <b>Tel:</b> +597-366660 / +597-366929 / +597-366939
+    </div>
+</div>
+""", unsafe_allow_html=True)
+
+menu = st.sidebar.radio("Navigatie Menu", ["Aanvraag Indienen (Burgers)", "Medewerkers Login / Dashboard"])
+
+# ---------------------------------------------------------
+# BURGERS FORMULIER (VOLAUTOMATISCHE MAIL BIJ INDIENEN)
+# ---------------------------------------------------------
+if menu == "Aanvraag Indienen (Burgers)":
+    
+    st.markdown("""
+    <div style="background-color: rgba(255, 255, 255, 0.95); padding: 20px 25px; border-radius: 14px; margin-bottom: 25px; border-left: 6px solid #1b5e20;">
+        <h3 style="color: #1b5e20; margin-top: 0; font-weight: 800; font-size: 18px;">Welkom bij het Online Aanvraagportaal</h3>
+        <p style="color: #0f172a; font-size: 14.5px; margin-bottom: 0;">
+            Via dit portaal kunt u eenvoudig uw <b>Verklaring Omtrent het Gedrag (Goedgedrag)</b> aanvragen. Vul het formulier in en upload de gevraagde documenten.
+        </p>
+    </div>
+    """, unsafe_allow_html=True)
+
+    with st.form("public_form", clear_on_submit=True):
+        st.markdown('<div class="section-header">👤 Stap 1: Persoonsgegevens</div>', unsafe_allow_html=True)
+        col1, col2 = st.columns(2)
+        with col1:
+            full_name = st.text_input("Volledige Naam *", placeholder="Voer uw voor- en achternaam in")
+            id_number = st.text_input("ID / Paspoortnummer *", placeholder="Bijv. FD000784")
+        with col2:
+            phone_number = st.text_input("Telefoonnummer *", placeholder="Bijv. +597 8706661")
+            email = st.text_input("E-mailadres *", placeholder="naam@domein.sr")
+
+        st.markdown('<div class="section-header">📁 Stap 2: Benodigde Documenten Uploaden</div>', unsafe_allow_html=True)
+        col3, col4 = st.columns(2)
+        with col3:
+            uitreksel = st.file_uploader("Uitreksel (PDF/Afbeelding) *", type=['pdf', 'jpg', 'jpeg', 'png'])
+            pasfoto = st.file_uploader("Pasfoto *", type=['jpg', 'jpeg', 'png'])
+        with col4:
+            id_kaart = st.file_uploader("Kopie Geldig ID-kaart *", type=['pdf', 'jpg', 'jpeg', 'png'])
+            bankbewijs = st.file_uploader("Bewijs van Bankovermaking *", type=['pdf', 'jpg', 'jpeg', 'png'])
+
+        st.markdown("<br>", unsafe_allow_html=True)
+        submitted = st.form_submit_button("🚀 Aanvraag Definitief Indienen")
+
+        if submitted:
+            if not (full_name and id_number and phone_number and email and uitreksel and pasfoto and id_kaart and bankbewijs):
+                st.error("⚠️ Vul alstublieft alle verplichte velden in en upload alle 4 documenten.")
+            else:
+                # 1. Bestanden opslaan
+                u_name = save_file(uitreksel)
+                p_name = save_file(pasfoto)
+                i_name = save_file(id_kaart)
+                b_name = save_file(bankbewijs)
+
+                # 2. Opslaan in database
+                conn = sqlite3.connect('wanica.db')
+                cursor = conn.cursor()
+                cursor.execute('''
+                    INSERT INTO applications (full_name, id_number, phone_number, email, uitreksel_file, pasfoto_file, id_kaart_file, bankbewijs_file)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                ''', (full_name, id_number, phone_number, email, u_name, p_name, i_name, b_name))
+                conn.commit()
+                conn.close()
+
+                # 3. DIRECT VOLAUTOMATISCH E-MAIL VERSTUREN NAAR DE BURGER
+                mail_onderwerp = "Bevestiging Aanvraag Verklaring Omtrent het Gedrag - Wanica Centrum"
+                mail_inhoud = f"""
+                <html>
+                <body style="font-family: Arial, sans-serif; color: #0f172a; line-height: 1.6;">
+                    <div style="background-color: #1b5e20; padding: 15px; border-radius: 8px; color: white;">
+                        <h2 style="margin: 0;">Districtscommissariaat Wanica Centrum</h2>
+                    </div>
+                    <p>Beste <b>{full_name}</b>,</p>
+                    <p>Hartelijk dank voor uw aanvraag voor een <b>Verklaring Omtrent het Gedrag (Goedgedrag)</b>.</p>
+                    <p>Wij hebben uw gegevens en de 4 geüploade documenten succesvol ontvangen. Uw aanvraag is momenteel <b>In behandeling</b> bij onze medewerkers.</p>
+                    <hr style="border: 0; border-top: 1px solid #cbd5e1;">
+                    <p><b>Geregistreerde Gegevens:</b><br>
+                    - Naam: {full_name}<br>
+                    - ID-nummer: {id_number}<br>
+                    - Telefoonnummer: {phone_number}<br>
+                    - E-mailadres: {email}</p>
+                    <p>Zodra uw aanvraag is verwerkt, nemen wij direct contact met u op via dit e-mailadres of telefonisch.</p>
+                    <br>
+                    <p>Met vriendelijke groet,<br>
+                    <b>Districtscommissariaat Wanica Centrum</b><br>
+                    Adres: Tawajarieweg No. 20 | Tel: +597-366660</p>
+                </body>
+                </html>
+                """
+                
+                with st.spinner("Aanvraag opslaan en automatische bevestigingsmail verzenden..."):
+                    mail_succes = stuur_automatische_mail(email, mail_onderwerp, mail_inhoud)
+
+                st.session_state['last_submission'] = {
+                    "full_name": full_name,
+                    "email": email,
+                    "phone_number": phone_number,
+                    "mail_succes": mail_succes
+                }
+                st.rerun()
+
+    if 'last_submission' in st.session_state:
+        sub = st.session_state['last_submission']
+        st.success("✅ Uw aanvraag is succesvol ingediend!")
         
-        # Toon een overzichtelijke tabel van de belangrijkste kolommen
-        st.dataframe(df[['id', 'voornaam', 'achternaam', 'id_nummer', 'telefoon', 'lad_nummer', 'status', 'afspraak_datum']], hide_index=True, use_container_width=True)
-        
-        sel_id = st.selectbox("Selecteer Dossier", df['id'].tolist())
-        d = next(item for item in res.data if item['id'] == sel_id)
-        
-        # --- NIEUW: UITGEBREID OVERZICHT VAN ALLE CLIËNTGEGEVENS ---
-        st.write("")
-        st.subheader(f"🔍 Volledige Details - Dossier #{sel_id}")
-        
-        # We maken een nette layout met 3 kolommen voor de cliënt- en afspraakkaarten
-        det_c1, det_c2, det_c3 = st.columns(3)
-        
-        with det_c1:
-            st.markdown(f"""
-            <div style="background-color: #f1f8e9; padding: 15px; border-radius: 5px; border-left: 4px solid #2e7d32;">
-                <h4 style="margin-top:0; color: #1b5e20;">👤 Cliëntgegevens</h4>
-                <b>Voornaam:</b> {d.get('voornaam', '')}<br>
-                <b>Achternaam:</b> {d.get('achternaam', '')}<br>
-                <b>ID-nummer:</b> {d.get('id_nummer', '')}<br>
-                <b>Woonadres:</b> {d.get('woonadres', '')}
-            </div>
-            """, unsafe_allow_html=True)
-            
-        with det_c2:
-            st.markdown(f"""
-            <div style="background-color: #f1f8e9; padding: 15px; border-radius: 5px; border-left: 4px solid #2e7d32;">
-                <h4 style="margin-top:0; color: #1b5e20;">📞 Contact & Referentie</h4>
-                <b>Telefoonnummer:</b> {d.get('telefoon', '')}<br>
-                <b>E-mailadres:</b> {d.get('email', '')}<br>
-                <b>LAD-nummer:</b> {d.get('lad_nummer', 'N.v.t.')}
-            </div>
-            """, unsafe_allow_html=True)
-            
-        with det_c3:
-            st.markdown(f"""
-            <div style="background-color: #e8f5e9; padding: 15px; border-radius: 5px; border-left: 4px solid #1b5e20;">
-                <h4 style="margin-top:0; color: #1b5e20;">📅 Afspraakstatus</h4>
-                <b>Datum:</b> {d.get('afspraak_datum', '')}<br>
-                <b>Tijdstip:</b> {d.get('afspraak_tijd', '')} uur<br>
-                <b>Huidige Status:</b> <u>{d.get('status', '')}</u>
-            </div>
-            """, unsafe_allow_html=True)
-            
-        # Volledige omschrijving van de klacht over de hele breedte
-        st.write("")
+        status_bericht = f"✉️ Een officiële bevestigingsmail is zojuist automatisch verzonden naar uw inbox op <b>{sub['email']}</b>." if sub['mail_succes'] else "⚠️ Aanvraag is opgeslagen, maar het verzenden van de automatische e-mail is mislukt."
+
         st.markdown(f"""
-        <div style="background-color: #fafafa; padding: 15px; border-radius: 5px; border: 1px solid #2e7d32;">
-            <h4 style="margin-top:0; color: #1b5e20;">📝 Omschrijving klacht/verzoek:</h4>
-            <p style="color: black; white-space: pre-wrap;">{d.get('bericht', '')}</p>
+        <div style="background-color: #ffffff; border: 3px solid #2e7d32; padding: 25px; border-radius: 14px; color: #0f172a; margin-top: 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.3);">
+            <h3 style="color: #1b5e20; margin-top: 0;">{status_bericht}</h3>
+            <p>Beste <b>{sub['full_name']}</b>,</p>
+            <p>Wij hebben uw aanvraag en documenten in goede orde ontvangen en in behandeling genomen. Zodra uw aanvraag is beoordeeld, nemen wij contact met u op via dit e-mailadres of via uw telefoonnummer ({sub['phone_number']}).</p>
+            <hr style="border: 0; border-top: 1px solid #cbd5e1; margin: 15px 0;">
+            <p style="margin-bottom: 0; font-size: 14px; color: #475569;">
+                <b>Districtscommissariaat Wanica Centrum</b><br>
+                Adres: Tawajarieweg No. 20 | Tel: +597-366660 / +597-366929
+            </p>
         </div>
         """, unsafe_allow_html=True)
-        # -----------------------------------------------------------
-        
-        st.divider()
-        st.subheader("⚙️ Dossier Bewerken & Acties")
-        ce1, ce2 = st.columns(2)
-        with ce1:
-            n_status = st.selectbox("Status aanpassen", ["In behandeling", "Wacht op documenten", "Bevestigd", "Afgehandeld"], index=["In behandeling", "Wacht op documenten", "Bevestigd", "Afgehandeld"].index(d['status']) if d['status'] in ["In behandeling", "Wacht op documenten", "Bevestigd", "Afgehandeld"] else 0)
-            n_datum = st.date_input("Nieuwe Datum", value=datetime.datetime.strptime(d['afspraak_datum'], '%Y-%m-%d').date())
-            n_tijd = st.text_input("Nieuwe Tijd", value=d['afspraak_tijd'])
-        with ce2:
-            toelichting = st.text_area("Interne Notitie (Medewerker)", value=d.get('medewerker_toelichting', ""))
-            mail_tekst = st.text_area("Bericht naar Cliënt (Laat leeg indien geen mail gewenst)")
+        if st.button("Nieuwe aanvraag indienen"):
+            del st.session_state['last_submission']
+            st.rerun()
 
-        b1, b2 = st.columns(2)
-        with b1:
-            if st.button("💾 Bijwerken & Mailen", use_container_width=True):
-                supabase.table("aanvragen").update({"status": n_status, "afspraak_datum": str(n_datum), "afspraak_tijd": n_tijd, "medewerker_toelichting": toelichting}).eq("id", sel_id).execute()
-                if mail_tekst:
-                    mail_body = f"Update Dossier: {n_status}.\\nAfspraak: {n_datum} om {n_tijd}.\\n\\n{mail_tekst}"
-                    stuur_mail(d['email'], "Update Dossier", mail_body)
-                st.success("Dossier succesvol bijgewerkt!")
-                st.rerun()
-        with b2:
-            if st.button(f"🗑️ Verwijder Dossier #{sel_id}", type="secondary", use_container_width=True):
-                supabase.table("aanvragen").delete().eq("id", sel_id).execute()
-                st.rerun()
+# ---------------------------------------------------------
+# MEDEWERKERS DASHBOARD
+# ---------------------------------------------------------
+else:
+    st.markdown("<h2 style='color: #ffffff; font-weight: 800;'>🔒 Medewerkers Portaal Dashboard</h2>", unsafe_allow_html=True)
 
-# C. RAPPORTAGES
-elif menu == "📊 Rapportages" and st.session_state.logged_in:
-    st.header("📊 Management Rapportages")
-    res = supabase.table("aanvragen").select("*").execute()
-    if res.data:
-        df = pd.DataFrame(res.data)
-        c1, c2 = st.columns(2)
-        with c1:
-            st.subheader("🎯 Status Verdeling")
-            fig_pie = px.pie(df, names='status', color_discrete_sequence=['#2e7d32', '#4caf50', '#81c784', '#a5d6a7'])
-            st.plotly_chart(fig_pie, use_container_width=True)
-        with c2:
-            st.subheader("📈 Aanvragen Trend")
-            df['created_at'] = pd.to_datetime(df['created_at']).dt.date
-            trend = df.groupby('created_at').size().reset_index(name='aantal')
-            fig_line = px.line(trend, x='created_at', y='aantal', markers=True)
-            fig_line.update_traces(line_color='#2e7d32')
-            st.plotly_chart(fig_line, use_container_width=True)
-        st.divider()
-        st.dataframe(df, use_container_width=True, hide_index=True)
+    if 'logged_in' not in st.session_state:
+        st.session_state['logged_in'] = False
+        st.session_state['username'] = ""
 
-# D. AGENDA
-elif menu == "📅 Agenda" and st.session_state.logged_in:
-    st.header("📅 Afspraken Agenda")
-    res = supabase.table("aanvragen").select("voornaam, achternaam, afspraak_datum, afspraak_tijd, status, telefoon").execute()
-    if res.data:
-        df = pd.DataFrame(res.data)
-        vandaag = datetime.date.today()
-        tab1, tab2, tab3 = st.tabs(["📅 Vandaag", "⏭️ Komende Week", "📁 Alles"])
-        with tab1:
-            df_v = df[pd.to_datetime(df['afspraak_datum']).dt.date == vandaag]
-            st.dataframe(df_v, use_container_width=True)
-        with tab2:
-            df_w = df[pd.to_datetime(df['afspraak_datum']).dt.date > vandaag]
-            st.dataframe(df_w, use_container_width=True)
-        with tab3:
-            st.dataframe(df.sort_values('afspraak_datum'), use_container_width=True)
-
-# E. SYSTEEMBEHEER (GEBRUIKERSBEHEER)
-elif menu == "⚙️ Systeembeheer" and st.session_state.logged_in:
-    st.header("⚙️ Systeembeheer")
-    if st.session_state.role == 'admin':
-        t1, t2 = st.tabs(["👥 Gebruikers Overzicht", "➕ Gebruiker Toevoegen"])
-        with t1:
-            res_u = supabase.table("medewerkers").select("*").execute()
-            if res_u.data:
-                df_u = pd.DataFrame(res_u.data)
-                st.dataframe(df_u[['gebruikersnaam', 'rol']], use_container_width=True)
-                u_del = st.selectbox("Verwijder medewerker", df_u['gebruikersnaam'].tolist())
-                if st.button("🗑️ Definitief Verwijderen", type="secondary"):
-                    if u_del != st.session_state.user:
-                        supabase.table("medewerkers").delete().eq("gebruikersnaam", u_del).execute()
-                        st.success("Gebruiker verwijderd.")
+    if not st.session_state['logged_in']:
+        with st.form("login_form"):
+            st.markdown('<div class="section-header">Inloggen met Beheerders- of Medewerkersaccount</div>', unsafe_allow_html=True)
+            user_input = st.text_input("Gebruikersnaam", placeholder="Voer gebruikersnaam in")
+            pwd_input = st.text_input("Wachtwoord", type="password", placeholder="Voer wachtwoord in")
+            login_submitted = st.form_submit_button("🔑 Inloggen")
+            
+            if login_submitted:
+                if user_input == "admin" and pwd_input == "admin@123":
+                    st.session_state['logged_in'] = True
+                    st.session_state['username'] = "admin"
+                    st.rerun()
+                else:
+                    conn = sqlite3.connect('wanica.db')
+                    cursor = conn.cursor()
+                    cursor.execute("SELECT * FROM staff WHERE username = ? AND password = ?", (user_input, pwd_input))
+                    staff_member = cursor.fetchone()
+                    conn.close()
+                    
+                    if staff_member:
+                        st.session_state['logged_in'] = True
+                        st.session_state['username'] = user_input
                         st.rerun()
-                    else: st.error("Je kunt jezelf niet verwijderen.")
-        with t2:
-            new_u = st.text_input("Nieuwe Gebruikersnaam")
-            new_p = st.text_input("Wachtwoord", type="password")
-            new_r = st.selectbox("Rol", ["user", "admin"])
-            if st.button("✅ Gebruiker Opslaan"):
-                supabase.table("medewerkers").insert({"gebruikersnaam": new_u, "wachtwoord": new_p, "rol": new_r}).execute()
-                st.success("Gebruiker aangemaakt!")
-                st.rerun()
+                    else:
+                        st.error("❌ Ongeldige gebruikersnaam of wachtwoord.")
     else:
-        st.warning("⚠️ Alleen beheerders hebben toegang tot dit menu.")
+        col_user, col_logout = st.columns([4, 1])
+        with col_user:
+            st.markdown(f"<h3 style='color: #ffffff; margin-top: 10px;'>👋 Ingelogd als: <b>{st.session_state['username']}</b></h3>", unsafe_allow_html=True)
+        with col_logout:
+            if st.button("🚪 Uitloggen", use_container_width=True):
+                st.session_state['logged_in'] = False
+                st.session_state['username'] = ""
+                st.rerun()
+
+        st.divider()
+
+        conn = sqlite3.connect('wanica.db')
+        df = pd.read_sql_query("SELECT id, full_name, id_number, phone_number, email, status, created_at FROM applications ORDER BY id DESC", conn)
+        conn.close()
+
+        st.markdown("<h3 style='color: #ffffff;'>📋 Binnengekomen Aanvragen</h3>", unsafe_allow_html=True)
+        if not df.empty:
+            st.dataframe(df, use_container_width=True)
+        else:
+            st.info("Geen aanvragen gevonden.")
