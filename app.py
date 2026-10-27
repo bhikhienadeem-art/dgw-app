@@ -82,7 +82,7 @@ def stuur_automatische_mail(ontvanger_email, onderwerp, inhoud_html):
         server.quit()
         return True
     except Exception as e:
-        print(f"Fout bij verzenden: {e}")
+        print(f"Fout bij verzenden e-mail: {e}")
         return False
 
 # --- 3. CUSTOM CSS ---
@@ -235,7 +235,7 @@ st.markdown(f"""
 menu = st.sidebar.radio("Navigatie Menu", ["Aanvraag Indienen (Burgers)", "Medewerkers Login / Dashboard"])
 
 # ---------------------------------------------------------
-# BURGERS FORMULIER (VOLAUTOMATISCHE MAIL BIJ INDIENEN)
+# BURGERS FORMULIER (VOLAUTOMATISCHE E-MAIL OP ACHTERGROND)
 # ---------------------------------------------------------
 if menu == "Aanvraag Indienen (Burgers)":
     
@@ -316,7 +316,7 @@ if menu == "Aanvraag Indienen (Burgers)":
                 </html>
                 """
                 
-                with st.spinner("Aanvraag opslaan en automatische bevestigingsmail verzenden..."):
+                with st.spinner("Aanvraag indienen en automatische bevestigingsmail verzenden..."):
                     mail_succes = stuur_automatische_mail(email, mail_onderwerp, mail_inhoud)
 
                 st.session_state['last_submission'] = {
@@ -331,7 +331,7 @@ if menu == "Aanvraag Indienen (Burgers)":
         sub = st.session_state['last_submission']
         st.success("✅ Uw aanvraag is succesvol ingediend!")
         
-        status_bericht = f"✉️ Een officiële bevestigingsmail is zojuist automatisch verzonden naar uw inbox op <b>{sub['email']}</b>." if sub['mail_succes'] else "⚠️ Aanvraag is opgeslagen, maar het verzenden van de automatische e-mail is mislukt."
+        status_bericht = f"✉️ Een officiële bevestigingsmail is zojuist automatisch verzonden vanuit <b>{EMAIL_USER}</b> naar uw inbox op <b>{sub['email']}</b>." if sub['mail_succes'] else "⚠️ Aanvraag is opgeslagen in de database, maar het verzenden van de e-mail is mislukt."
 
         st.markdown(f"""
         <div style="background-color: #ffffff; border: 3px solid #2e7d32; padding: 25px; border-radius: 14px; color: #0f172a; margin-top: 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.3);">
