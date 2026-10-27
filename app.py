@@ -16,7 +16,7 @@ st.set_page_config(
 )
 
 EMAIL_USER = "ggdaanvraag@gmail.com"
-EMAIL_PASS = "fzne mpao hdqd lwcr" # Jouw Google App-Password
+EMAIL_PASS = "fzne mpao hdqd lwcr"
 
 # Initialize Database & Tables
 def init_db():
@@ -65,7 +65,7 @@ def save_file(uploaded_file):
         return new_name
     return None
 
-# --- 2. EMAIL FUNCTIE (SMTP - Exact zoals in je werkende project) ---
+# --- 2. EMAIL FUNCTIE (SMTP) ---
 def stuur_mail(ontvanger, onderwerp, inhoud):
     msg = MIMEMultipart()
     msg['From'] = f"Districtscommissariaat Wanica Centrum <{EMAIL_USER}>"
@@ -236,7 +236,7 @@ st.markdown(f"""
 menu = st.sidebar.radio("Navigatie Menu", ["Aanvraag Indienen (Burgers)", "Medewerkers Login / Dashboard"])
 
 # ---------------------------------------------------------
-# BURGERS FORMULIER (VOLAUTOMATISCHE MAILS)
+# BURGERS FORMULIER (VOLAUTOMATISCH)
 # ---------------------------------------------------------
 if menu == "Aanvraag Indienen (Burgers)":
     
@@ -304,7 +304,7 @@ if menu == "Aanvraag Indienen (Burgers)":
                 Adres: Tawajarieweg No. 20 | Tel: +597-366660
                 """
 
-                # 3B. E-mail naar de MEDEWERKER (Notificatie met alle gegevens)
+                # 3B. E-mail naar de MEDEWERKER (Notificatie)
                 medewerker_onderwerp = f"🚨 Nieuwe Goedgedrag Aanvraag #{app_id} - {full_name}"
                 medewerker_inhoud = f"""
                 <h3>Er is een nieuwe Goedgedrag aanvraag binnengekomen:</h3>
@@ -328,7 +328,7 @@ if menu == "Aanvraag Indienen (Burgers)":
                 with st.spinner("Aanvraag opslaan en automatische e-mails verzenden..."):
                     # Verstuur naar de burger
                     stuur_mail(email, burger_onderwerp, burger_inhoud)
-                    # Verstuur naar de medewerker (ggdaanvraag@gmail.com)
+                    # Verstuur naar de medewerker
                     stuur_mail(EMAIL_USER, medewerker_onderwerp, medewerker_inhoud)
 
                 st.session_state['last_submission'] = {
