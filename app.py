@@ -65,7 +65,7 @@ def save_file(uploaded_file):
         return new_name
     return None
 
-# --- 2. EMAIL FUNCTIE (SMTP) ---
+# --- 2. AUTOMATISCHE E-MAIL FUNCTIE (SMTP) ---
 def stuur_mail(ontvanger, onderwerp, inhoud):
     msg = MIMEMultipart()
     msg['From'] = f"Districtscommissariaat Wanica Centrum <{EMAIL_USER}>"
@@ -83,7 +83,7 @@ def stuur_mail(ontvanger, onderwerp, inhoud):
         server.quit()
         return True
     except Exception as e: 
-        print(f"Fout bij verzenden: {e}")
+        print(f"Fout bij verzenden e-mail: {e}")
         return False
 
 # --- 3. CUSTOM CSS ---
@@ -292,7 +292,7 @@ if menu == "Aanvraag Indienen (Burgers)":
                 conn.commit()
                 conn.close()
 
-                # 3A. E-mail naar de BURGER (Bevestiging)
+                # 3A. E-mail naar de BURGER (Automatisch)
                 burger_onderwerp = "Bevestiging Aanvraag Verklaring Omtrent het Gedrag - Wanica Centrum"
                 burger_inhoud = f"""
                 Beste {full_name},<br><br>
@@ -304,7 +304,7 @@ if menu == "Aanvraag Indienen (Burgers)":
                 Adres: Tawajarieweg No. 20 | Tel: +597-366660
                 """
 
-                # 3B. E-mail naar de MEDEWERKER (Notificatie)
+                # 3B. E-mail naar de MEDEWERKER (Automatisch met alle gegevens)
                 medewerker_onderwerp = f"🚨 Nieuwe Goedgedrag Aanvraag #{app_id} - {full_name}"
                 medewerker_inhoud = f"""
                 <h3>Er is een nieuwe Goedgedrag aanvraag binnengekomen:</h3>
@@ -325,17 +325,17 @@ if menu == "Aanvraag Indienen (Burgers)":
                 <i>Log in op het Medewerkersdashboard om de documenten te bekijken/downloaden en de status bij te werken.</i>
                 """
 
-                with st.spinner("Aanvraag opslaan en automatische e-mails verzenden..."):
-                    # Verstuur naar de burger
-                    stuur_mail(email, burger_onderwerp, burger_inhoud)
-                    # Verstuur naar de medewerker
-                    stuur_mail(EMAIL_USER, medewerker_onderwerp, medewerker_inhoud)
+                with st.spinner("Aanvraag opslaan en automatische e-mails direct verzenden..."):
+                    res1 = stuur_mail(email, burger_onderwerp, burger_inhoud)
+                    res2 = stuur_mail(EMAIL_USER, medewerker_onderwerp, medewerker_inhoud)
 
                 st.session_state['last_submission'] = {
                     "full_name": full_name,
                     "email": email,
                     "phone_number": phone_number,
-                    "app_id": app_id
+                    "app_id": app_id,
+                    "mail_burger": res1,
+                    "mail_medewerker": res2
                 }
                 st.rerun()
 
@@ -343,12 +343,15 @@ if menu == "Aanvraag Indienen (Burgers)":
         sub = st.session_state['last_submission']
         st.success("✅ Uw aanvraag is succesvol ingediend!")
         
+        # Statusmelding tonen zodat je direct ziet of de mails verzonden zijn
+        mail_status_text = "✉️ De bevestigingsmail is automatisch verzonden naar de burger en de notificatie is naar de medewerker gemaild." if (sub['mail_burger'] and sub['mail_medewerker']) else "⚠️ Aanvraag opgeslagen, maar er was een SMTP-fout bij het verzenden van een van de e-mails."
+
         st.markdown(f"""
         <div style="background-color: #ffffff; border: 3px solid #2e7d32; padding: 25px; border-radius: 14px; color: #0f172a; margin-top: 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.3);">
-            <h3 style="color: #1b5e20; margin-top: 0;">✉️ Aanvraag Geregistreerd & Bevestigingsmail Verzonden</h3>
+            <h3 style="color: #1b5e20; margin-top: 0;">{mail_status_text}</h3>
             <p>Beste <b>{sub['full_name']}</b>,</p>
             <p>Hartelijk dank voor uw aanvraag voor een <b>Verklaring Omtrent het Gedrag (Goedgedrag)</b> bij het Districtscommissariaat Wanica Centrum (Dossier #{sub['app_id']}).</p>
-            <p>Er is automatisch een bevestigingsmail verzonden naar uw inbox op <b>{sub['email']}</b>. Zodra uw aanvraag is beoordeeld, nemen wij contact met u op via dit e-mailadres of via uw telefoonnummer ({sub['phone_number']}).</p>
+            <p>Wij hebben uw aanvraag en documenten in goede orde ontvangen op <b>{sub['email']}</b>. Zodra uw aanvraag is beoordeeld, nemen wij contact met u op via dit e-mailadres of via uw telefoonnummer ({sub['phone_number']}).</p>
             <hr style="border: 0; border-top: 1px solid #cbd5e1; margin: 15px 0;">
             <p style="margin-bottom: 0; font-size: 14px; color: #475569;">
                 <b>Districtscommissariaat Wanica Centrum</b><br>
