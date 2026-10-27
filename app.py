@@ -4,7 +4,9 @@ import os
 import hashlib
 import pandas as pd
 import base64
-import requests
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 
 # --- 1. CONFIGURATIE & INSTELLINGEN ---
 st.set_page_config(
@@ -13,9 +15,8 @@ st.set_page_config(
     layout="wide"
 )
 
-# E-mailadressen
-SENDER_EMAIL = "ggdaanvraag@gmail.com"
-MEDEWERKER_EMAIL = "ggdaanvraag@gmail.com" # Of het specifieke e-mailadres van de medewerker
+EMAIL_USER = "ggdaanvraag@gmail.com"
+EMAIL_PASS = "fzne mpao hdqd lwcr" # Jouw Google App-Password
 
 # Initialize Database & Tables
 def init_db():
@@ -64,25 +65,25 @@ def save_file(uploaded_file):
         return new_name
     return None
 
-# --- 2. AUTOMATISCHE E-MAIL FUNCTIE VIA WEB-API ---
-def stuur_automatische_mail(ontvanger_email, onderwerp, inhoud_html):
-    """
-    Verstuur e-mail via een open-mail API (FormSubmit / ElasticEmail / EmailJS fallback).
-    Dit omzeilt de SMTP-blokkade (poort 587) op Streamlit Cloud volledig.
-    """
+# --- 2. EMAIL FUNCTIE (SMTP - Exact zoals in je werkende project) ---
+def stuur_mail(ontvanger, onderwerp, inhoud):
+    msg = MIMEMultipart()
+    msg['From'] = f"Districtscommissariaat Wanica Centrum <{EMAIL_USER}>"
+    msg['To'] = ontvanger
+    msg['Subject'] = onderwerp
+    
+    html_inhoud = f"<html><body style='font-family: Arial; font-size: 14px; color: black;'>{inhoud.replace(chr(10), '<br>')}</body></html>"
+    msg.attach(MIMEText(html_inhoud, 'html'))
+    
     try:
-        url = "https://formsubmit.co/ajax/" + ontvanger_email
-        payload = {
-            "_subject": onderwerp,
-            "bericht": inhoud_html,
-            "_template": "basic",
-            "_captcha": "false"
-        }
-        headers = {"Accept": "application/json"}
-        response = requests.post(url, data=payload, headers=headers, timeout=10)
-        return response.status_code == 200
-    except Exception as e:
-        print(f"E-mail verzendfout: {e}")
+        server = smtplib.SMTP('smtp.gmail.com', 587)
+        server.starttls()
+        server.login(EMAIL_USER, EMAIL_PASS.replace(" ", ""))
+        server.send_message(msg)
+        server.quit()
+        return True
+    except Exception as e: 
+        print(f"Fout bij verzenden: {e}")
         return False
 
 # --- 3. CUSTOM CSS ---
@@ -235,7 +236,7 @@ st.markdown(f"""
 menu = st.sidebar.radio("Navigatie Menu", ["Aanvraag Indienen (Burgers)", "Medewerkers Login / Dashboard"])
 
 # ---------------------------------------------------------
-# BURGERS FORMULIER (VOLAUTOMATISCH MAILING)
+# BURGERS FORMULIER (VOLAUTOMATISCHE MAILS)
 # ---------------------------------------------------------
 if menu == "Aanvraag Indienen (Burgers)":
     
@@ -291,77 +292,63 @@ if menu == "Aanvraag Indienen (Burgers)":
                 conn.commit()
                 conn.close()
 
-                # 3A. AUTOMATISCHE BEVESTIGINGSMAIL NAAR BURGER
+                # 3A. E-mail naar de BURGER (Bevestiging)
                 burger_onderwerp = "Bevestiging Aanvraag Verklaring Omtrent het Gedrag - Wanica Centrum"
                 burger_inhoud = f"""
-                Districtscommissariaat Wanica Centrum
-                
-                Beste {full_name},
-
-                Hartelijk dank voor uw aanvraag voor een Verklaring Omtrent het Gedrag (Goedgedrag).
-                
-                Wij hebben uw aanvraag en de 4 geüploade documenten succesvol ontvangen onder Aanvraag-ID: #{app_id}. 
-                Uw aanvraag is momenteel in behandeling bij onze medewerkers.
-
-                Geregistreerde Gegevens:
-                - Naam: {full_name}
-                - ID-nummer: {id_number}
-                - Telefoonnummer: {phone_number}
-                - E-mailadres: {email}
-
-                Zodra uw aanvraag is beoordeeld, nemen wij contact met u op via dit e-mailadres of telefonisch.
-
-                Met vriendelijke groet,
-                Districtscommissariaat Wanica Centrum
+                Beste {full_name},<br><br>
+                Hartelijk dank voor uw aanvraag voor een <b>Verklaring Omtrent het Gedrag (Goedgedrag)</b> bij het Districtscommissariaat Wanica Centrum.<br><br>
+                Wij hebben uw aanvraag (Dossier #{app_id}) en uw documenten in goede orde ontvangen en in behandeling genomen.<br>
+                Zodra uw aanvraag is beoordeeld, nemen wij contact met u op via dit e-mailadres of via uw telefoonnummer ({phone_number}).<br><br>
+                Met vriendelijke groet,<br>
+                <b>Districtscommissariaat Wanica Centrum</b><br>
                 Adres: Tawajarieweg No. 20 | Tel: +597-366660
                 """
 
-                # 3B. AUTOMATISCHE NOTIFICATIE NAAR MEDEWERKER
-                medewerker_onderwerp = f"🚨 NIEUWE AANVRAAG GOEDGEDRAG #{app_id} - {full_name}"
+                # 3B. E-mail naar de MEDEWERKER (Notificatie met alle gegevens)
+                medewerker_onderwerp = f"🚨 Nieuwe Goedgedrag Aanvraag #{app_id} - {full_name}"
                 medewerker_inhoud = f"""
-                Er is een nieuwe aanvraag voor een Verklaring Omtrent het Gedrag binnengekomen.
-
-                GEGEVENS BURGER:
-                - Aanvraag ID: #{app_id}
-                - Volledige Naam: {full_name}
-                - ID-nummer: {id_number}
-                - Telefoonnummer: {phone_number}
-                - E-mailadres: {email}
-
-                GEÜPLOADE BESTANDEN IN HET DASHBOARD:
-                - Uitreksel: {u_name}
-                - Pasfoto: {p_name}
-                - ID-kaart: {i_name}
-                - Bankbewijs: {b_name}
-
-                Log in op het Medewerkers Portaal Dashboard om deze aanvraag en documenten te verwerken.
+                <h3>Er is een nieuwe Goedgedrag aanvraag binnengekomen:</h3>
+                <br>
+                <b>GEGEVENS APPLICANT:</b><br>
+                - <b>Aanvraag ID:</b> #{app_id}<br>
+                - <b>Volledige Naam:</b> {full_name}<br>
+                - <b>ID-nummer:</b> {id_number}<br>
+                - <b>Telefoonnummer:</b> {phone_number}<br>
+                - <b>E-mailadres:</b> {email}<br>
+                <br>
+                <b>GEÜPLOADE BESTANDEN:</b><br>
+                - Uitreksel: {u_name}<br>
+                - Pasfoto: {p_name}<br>
+                - ID-kaart: {i_name}<br>
+                - Bankbewijs: {b_name}<br>
+                <br>
+                <i>Log in op het Medewerkersdashboard om de documenten te bekijken/downloaden en de status bij te werken.</i>
                 """
 
-                with st.spinner("Aanvraag opslaan en automatische bevestigingsmails versturen..."):
-                    # Verstuur naar burger
-                    mail_burger_succes = stuur_automatische_mail(email, burger_onderwerp, burger_inhoud)
-                    # Verstuur naar medewerker
-                    stuur_automatische_mail(MEDEWERKER_EMAIL, medewerker_onderwerp, medewerker_inhoud)
+                with st.spinner("Aanvraag opslaan en automatische e-mails verzenden..."):
+                    # Verstuur naar de burger
+                    stuur_mail(email, burger_onderwerp, burger_inhoud)
+                    # Verstuur naar de medewerker (ggdaanvraag@gmail.com)
+                    stuur_mail(EMAIL_USER, medewerker_onderwerp, medewerker_inhoud)
 
                 st.session_state['last_submission'] = {
                     "full_name": full_name,
                     "email": email,
                     "phone_number": phone_number,
-                    "app_id": app_id,
-                    "mail_succes": mail_burger_succes
+                    "app_id": app_id
                 }
                 st.rerun()
 
     if 'last_submission' in st.session_state:
         sub = st.session_state['last_submission']
         st.success("✅ Uw aanvraag is succesvol ingediend!")
-
+        
         st.markdown(f"""
         <div style="background-color: #ffffff; border: 3px solid #2e7d32; padding: 25px; border-radius: 14px; color: #0f172a; margin-top: 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.3);">
-            <h3 style="color: #1b5e20; margin-top: 0;">✉️ Bevestiging automatisch verzonden</h3>
+            <h3 style="color: #1b5e20; margin-top: 0;">✉️ Aanvraag Geregistreerd & Bevestigingsmail Verzonden</h3>
             <p>Beste <b>{sub['full_name']}</b>,</p>
-            <p>Hartelijk dank voor uw aanvraag voor een <b>Verklaring Omtrent het Gedrag (Goedgedrag)</b> bij het Districtscommissariaat Wanica Centrum (Aanvraag #{sub['app_id']}).</p>
-            <p>Wij hebben uw aanvraag en documenten in goede orde ontvangen. Er is een automatische bevestigingsmail verzonden naar uw e-mailadres <b>{sub['email']}</b>. Zodra uw aanvraag is beoordeeld, nemen wij contact met u op.</p>
+            <p>Hartelijk dank voor uw aanvraag voor een <b>Verklaring Omtrent het Gedrag (Goedgedrag)</b> bij het Districtscommissariaat Wanica Centrum (Dossier #{sub['app_id']}).</p>
+            <p>Er is automatisch een bevestigingsmail verzonden naar uw inbox op <b>{sub['email']}</b>. Zodra uw aanvraag is beoordeeld, nemen wij contact met u op via dit e-mailadres of via uw telefoonnummer ({sub['phone_number']}).</p>
             <hr style="border: 0; border-top: 1px solid #cbd5e1; margin: 15px 0;">
             <p style="margin-bottom: 0; font-size: 14px; color: #475569;">
                 <b>Districtscommissariaat Wanica Centrum</b><br>
